@@ -122,6 +122,88 @@
           }
         }
       }
+    },
+    "SocialPost": {
+      "title": "Social Post",
+      "description": "A user post with caption and image",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "image": { "type": "string" },
+        "caption": { "type": "string" },
+        "location": { "type": "string" },
+        "likes": { "type": "number" },
+        "likedBy": { "type": "array", "items": { "type": "string" } },
+        "comments": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string" },
+        "isCustom": { "type": "boolean" },
+        "ownerId": { "type": "string" },
+        "views": { "type": "number" }
+      },
+      "required": ["username", "image"]
+    },
+    "MShort": {
+      "title": "M Short",
+      "description": "A vertical short video",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "musicTitle": { "type": "string" },
+        "likes": { "type": "number" },
+        "likedBy": { "type": "array", "items": { "type": "string" } },
+        "commentsCount": { "type": "number" },
+        "isCustom": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "views": { "type": "number" }
+      },
+      "required": ["username", "videoUrl"]
+    },
+    "UserStory": {
+      "title": "User Story",
+      "description": "A temporary visual status story",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "text": { "type": "string" },
+        "hasViewed": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["username", "imageUrl"]
+    },
+    "SocialFollow": {
+      "title": "Social Follow",
+      "description": "Indicates user-to-user following links",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "followedId": { "type": "string" },
+        "followedUsername": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["followerId"]
+    },
+    "SocialPlaylist": {
+      "title": "Social Playlist",
+      "description": "A playlist of saved posts or shorts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["name", "ownerId"]
     }
   },
   "firestore": {
@@ -144,6 +226,26 @@
     "/system/{docId}": {
       "schema": "SystemConfig",
       "description": "Operational parameters and maintenance policies"
+    },
+    "/social_posts/{postId}": {
+      "schema": "SocialPost",
+      "description": "Social+ user feed posts"
+    },
+    "/social_shorts/{shortId}": {
+      "schema": "MShort",
+      "description": "Social+ vertical videos"
+    },
+    "/social_stories/{storyId}": {
+      "schema": "UserStory",
+      "description": "Social+ temporary stories"
+    },
+    "/social_follows/{followId}": {
+      "schema": "SocialFollow",
+      "description": "Social+ user connections"
+    },
+    "/social_playlists/{playlistId}": {
+      "schema": "SocialPlaylist",
+      "description": "User custom saved collections"
     }
   }
 }

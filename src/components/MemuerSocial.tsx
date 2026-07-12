@@ -5,10 +5,10 @@ import {
   Tv, PlusSquare, MoreHorizontal, Settings, Edit3, Camera, 
   Video, Compass, Sparkles, Smile, Share2, Check, Volume2, 
   VolumeX, Eye, X, Home, MapPin, Image, Maximize2, Minimize2,
-  Play, Pause
+  Play, Pause, Trash2, Info, Shield, Lock, Bell, Flag
 } from 'lucide-react';
 import { 
-  collection, doc, getDoc, setDoc, addDoc, updateDoc, onSnapshot, query, orderBy, limit
+  collection, doc, getDoc, setDoc, addDoc, updateDoc, onSnapshot, query, orderBy, limit, deleteDoc
 } from 'firebase/firestore';
 import { 
   encryptMessage, getStoredKeyPair, generateKeyPair, storeKeyPair 
@@ -21,6 +21,8 @@ interface MemuerSocialProps {
   themeName: string;
   contacts?: any[];
   db?: any;
+  deepLinkShortId?: string | null;
+  clearDeepLink?: () => void;
 }
 
 interface SocialPost {
@@ -35,6 +37,8 @@ interface SocialPost {
   comments: Array<{ id: string; username: string; text: string; createdAt: string }>;
   createdAt: string;
   isCustom?: boolean;
+  ownerId?: string;
+  views?: number;
 }
 
 interface MShort {
@@ -48,6 +52,9 @@ interface MShort {
   likedBy: string[];
   commentsCount: number;
   isCustom?: boolean;
+  createdAt?: string;
+  ownerId?: string;
+  views?: number;
 }
 
 interface UserStory {
@@ -57,6 +64,8 @@ interface UserStory {
   imageUrl: string;
   hasViewed: boolean;
   text?: string;
+  ownerId?: string;
+  createdAt?: string;
 }
 
 const PRESET_IMAGES = [
@@ -74,7 +83,9 @@ const PRESET_SHORTS = [
   { name: "Neon Abstract", url: "https://player.vimeo.com/external/538571822.sd.mp4?s=694432168972ecaf0e8d5bf306fa0dbd7beecb44&profile_id=139&oauth2_token_id=57447761" }
 ];
 
-export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, currentTheme, themeName, contacts = [], db }) => {
+export const MemuerSocial: React.FC<MemuerSocialProps> = ({ 
+  user, onClose, currentTheme, themeName, contacts = [], db, deepLinkShortId, clearDeepLink 
+}) => {
   const [activeTab, setActiveTab] = useState<'feed' | 'shorts' | 'create' | 'profile'>('feed');
   const [posts, setPosts] = useState<SocialPost[]>(() => {
     const saved = localStorage.getItem('social_posts');
@@ -167,17 +178,132 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
 
   // Media uploading state
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Followed users and follower counts states
+  const [followedUsers, setFollowedUsers] = useState<string[]>([]);
+  const [followerCount, setFollowerCount] = useState<number>(0);
 
   // Sharing state
   const [sharingContent, setSharingContent] = useState<{ type: 'post' | 'short'; id: string; caption: string; url: string } | null>(null);
   const [sharedStatus, setSharedStatus] = useState<Record<string, 'idle' | 'sending' | 'success'>>({});
+  
+  // Custom interaction overlays (Delete confirm & Info overlay)
+  const [deletingContent, setDeletingContent] = useState<{ type: 'post' | 'short'; id: string } | null>(null);
+  const [reportingItem, setReportingItem] = useState<{ type: 'post' | 'short'; id: string; item: any } | null>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [infoContent, setInfoContent] = useState<{ type: 'post' | 'short'; caption: string; date: string; views: number; likes: number } | null>(null);
+
+  const handleDeleteContent = async (type: 'post' | 'short', id: string) => {
+    try {
+      if (type === 'post') {
+        if (db) {
+          await deleteDoc(doc(db, 'social_posts', id));
+        } else {
+          const updated = posts.filter(p => p.id !== id);
+          setPosts(updated);
+          localStorage.setItem('social_posts', JSON.stringify(updated));
+        }
+      } else {
+        if (db) {
+          await deleteDoc(doc(db, 'social_shorts', id));
+        } else {
+          const updated = shorts.filter(s => s.id !== id);
+          setShorts(updated);
+          localStorage.setItem('social_shorts', JSON.stringify(updated));
+        }
+      }
+      setDeletingContent(null);
+    } catch (err) {
+      console.error("Error deleting content:", err);
+    }
+  };
+
+  const handleReportSubmit = async () => {
+    if (!reportingItem) return;
+    if (!reportReason.trim()) {
+      alert("Please provide a reason for the report.");
+      return;
+    }
+
+    const reportPayload = {
+      itemId: reportingItem.id,
+      itemType: reportingItem.type,
+      itemCaption: reportingItem.item.caption || '',
+      itemImage: reportingItem.item.image || reportingItem.item.videoUrl || '',
+      itemUsername: reportingItem.item.username || '',
+      itemOwnerId: reportingItem.item.ownerId || '',
+      reporterUsername: user?.displayName || user?.email || 'Anonymous',
+      reporterId: user?.uid || 'guest',
+      reason: reportReason.trim(),
+      createdAt: new Date().toISOString(),
+      status: 'pending'
+    };
+
+    if (db) {
+      try {
+        await addDoc(collection(db, 'social_reports'), reportPayload);
+        alert("Content reported successfully. Administrators have been notified.");
+      } catch (err) {
+        console.error("Error submitting report to Firestore:", err);
+        alert("Report could not be uploaded to Firestore. Using offline fallback.");
+      }
+    } else {
+      const savedReports = JSON.parse(localStorage.getItem('social_reports') || '[]');
+      savedReports.push({ id: 'report_' + Date.now(), ...reportPayload });
+      localStorage.setItem('social_reports', JSON.stringify(savedReports));
+      alert("Content reported (Local storage fallback).");
+    }
+
+    setReportingItem(null);
+    setReportReason('');
+  };
+
+  const handleToggleFollow = async (authorUsername: string, authorId?: string) => {
+    const targetId = authorId || authorUsername;
+    const isFollowing = followedUsers.includes(targetId);
+
+    if (db) {
+      const followDocId = `follow_${user?.uid}_${targetId}`;
+      try {
+        if (isFollowing) {
+          await deleteDoc(doc(db, 'social_follows', followDocId));
+        } else {
+          await setDoc(doc(db, 'social_follows', followDocId), {
+            followerId: user?.uid,
+            followedId: targetId,
+            followedUsername: authorUsername,
+            createdAt: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        console.error("Error toggling follow in Firestore:", err);
+      }
+    } else {
+      let updated;
+      if (isFollowing) {
+        updated = followedUsers.filter(id => id !== targetId);
+      } else {
+        updated = [...followedUsers, targetId];
+      }
+      setFollowedUsers(updated);
+      localStorage.setItem('social_follows', JSON.stringify(updated));
+      // Simulate follow count
+      setFollowerCount(updated.length);
+    }
+  };
 
   // Shorts state
   const [currentShortIndex, setCurrentShortIndex] = useState(0);
   const [activeShortIndex, setActiveShortIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [profileSubTab, setProfileSubTab] = useState<'photos' | 'shorts'>('photos');
+  const [profileSubTab, setProfileSubTab] = useState<'photos' | 'shorts' | 'playlists'>('photos');
+  const [playlists, setPlaylists] = useState<any[]>([]);
+  const [savingItem, setSavingItem] = useState<{ type: 'post' | 'short'; id: string; item: any } | null>(null);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [selectedPlaylistIdForView, setSelectedPlaylistIdForView] = useState<string | null>(null);
+  const selectedPlaylistForView = playlists.find(p => p.id === selectedPlaylistIdForView) || null;
   const [isMuted, setIsMuted] = useState(true);
   const [doubleTapHeart, setDoubleTapHeart] = useState<{ id: string; x: number; y: number } | null>(null);
   const [commentOpenPostId, setCommentOpenPostId] = useState<string | null>(null);
@@ -201,6 +327,58 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
     }
   };
 
+  // Chunked upload helper function (bypasses proxy and file size upload limits completely)
+  const uploadFileInChunks = async (file: File, onProgress?: (pct: number) => void): Promise<string> => {
+    const chunkSize = 1024 * 512; // 512KB chunks
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    for (let index = 0; index < totalChunks; index++) {
+      const start = index * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunkBlob = file.slice(start, end);
+
+      // Read chunk as base64
+      const chunkData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(chunkBlob);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+      });
+
+      // Send to server chunk endpoint
+      const response = await fetch("/api/upload/chunk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          uploadId,
+          chunkIndex: index,
+          totalChunks,
+          chunkData,
+          filename: file.name
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Chunk upload ${index + 1}/${totalChunks} failed with status ${response.status}`);
+      }
+
+      const resData = await response.json();
+      if (onProgress) {
+        onProgress(Math.round(((index + 1) / totalChunks) * 100));
+      }
+
+      if (resData.completed && resData.url) {
+        return resData.url;
+      }
+    }
+
+    throw new Error("Upload completed but no URL was returned from the server.");
+  };
+
   // Upload Handlers
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -208,46 +386,28 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
 
     try {
       setUploading(true);
+      setUploadProgress(0);
       setUploadError(null);
 
-      // Convert file to base64
-      const fileData = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (err) => reject(err);
-      });
-
-      // Upload via proxy API
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          fileData,
-          mimeType: file.type
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.url) {
-          setImageUrlInput(data.url);
-          setSelectedImageTemplate(-1);
-        }
-      } else {
-        throw new Error("Failed to upload photo to server.");
+      // Check file size (e.g. 150MB limit)
+      if (file.size > 150 * 1024 * 1024) {
+        throw new Error("File is too large. Please select an image smaller than 150MB.");
       }
+
+      const fileUrl = await uploadFileInChunks(file, (pct) => setUploadProgress(pct));
+      setImageUrlInput(fileUrl);
+      setSelectedImageTemplate(-1);
+      setUploadError(null);
     } catch (err: any) {
       console.error("Photo upload error:", err);
+      setUploadError(err.message || "Failed to upload photo to server.");
       // Fallback: use an object URL so it still displays and works in the current session
       const fallbackUrl = URL.createObjectURL(file);
       setImageUrlInput(fallbackUrl);
       setSelectedImageTemplate(-1);
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -257,46 +417,28 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
 
     try {
       setUploading(true);
+      setUploadProgress(0);
       setUploadError(null);
 
-      // Convert file to base64
-      const fileData = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (err) => reject(err);
-      });
-
-      // Upload via proxy API
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          fileData,
-          mimeType: file.type
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.url) {
-          setVideoUrlInput(data.url);
-          setSelectedVideoTemplate(-1);
-        }
-      } else {
-        throw new Error("Failed to upload video to server.");
+      // Check file size (e.g. 150MB limit)
+      if (file.size > 150 * 1024 * 1024) {
+        throw new Error("File is too large. Please select a video smaller than 150MB.");
       }
+
+      const fileUrl = await uploadFileInChunks(file, (pct) => setUploadProgress(pct));
+      setVideoUrlInput(fileUrl);
+      setSelectedVideoTemplate(-1);
+      setUploadError(null);
     } catch (err: any) {
       console.error("Video upload error:", err);
+      setUploadError(err.message || "Failed to upload video to server.");
       // Fallback: use an object URL
       const fallbackUrl = URL.createObjectURL(file);
       setVideoUrlInput(fallbackUrl);
       setSelectedVideoTemplate(-1);
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -331,7 +473,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
 
       // 2. Encrypt and Send Message
       const messageText = sharingContent.type === 'short' 
-        ? `🎥 Shared from Memuer Social+: "${sharingContent.caption}"\n${sharingContent.url}`
+        ? `🎥 Shared from Memuer Social+: "${sharingContent.caption}"\n[short_id:${sharingContent.id}]\n${sharingContent.url}`
         : `🖼️ Shared from Memuer Social+: "${sharingContent.caption}"\n${sharingContent.url}`;
 
       // Get key pair for encryption
@@ -382,6 +524,99 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
     'from-slate-800 to-slate-950'
   ];
 
+  // One-time database seeding check
+  useEffect(() => {
+    if (!db) return;
+    const runSeeding = async () => {
+      try {
+        const seedingRef = doc(db, 'system', 'seeding');
+        const seedingSnap = await getDoc(seedingRef);
+        if (!seedingSnap.exists() || !seedingSnap.data().social_seeded) {
+          const defaultPosts: SocialPost[] = [
+            {
+              id: 'post_seed_1',
+              username: 'cyber.wave',
+              userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=cyber.wave',
+              image: PRESET_IMAGES[0].url,
+              caption: 'Late night walk in beautiful cyber Tokyo! 🏮✨',
+              location: 'Tokyo, Japan',
+              likes: 42,
+              likedBy: [],
+              comments: [
+                { id: 'c1', username: 'egypt.explorer', text: 'This looks incredibly unreal! 😍', createdAt: '2h ago' }
+              ],
+              createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+              isCustom: false,
+              ownerId: 'system-seed',
+              views: 20
+            },
+            {
+              id: 'post_seed_2',
+              username: 'egypt.explorer',
+              userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=egypt.explorer',
+              image: PRESET_IMAGES[1].url,
+              caption: 'Standing before the timeless pyramids of Giza. Absolute magic. 🇪🇬🐪',
+              location: 'Giza, Egypt',
+              likes: 128,
+              likedBy: [],
+              comments: [],
+              createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
+              isCustom: false,
+              ownerId: 'system-seed',
+              views: 128
+            }
+          ];
+
+          for (const p of defaultPosts) {
+            await setDoc(doc(db, 'social_posts', p.id), p);
+          }
+
+          const defaultShorts: MShort[] = [
+            {
+              id: 'short_seed_1',
+              username: 'neon.runner',
+              userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=neon.runner',
+              videoUrl: PRESET_SHORTS[0].url,
+              caption: 'Cyberpunk nights in the digital realm 🌌✨',
+              musicTitle: 'Cyber Aesthetics Lo-Fi',
+              likes: 234,
+              likedBy: [],
+              commentsCount: 5,
+              isCustom: false,
+              createdAt: new Date().toISOString(),
+              ownerId: 'system-seed',
+              views: 45
+            },
+            {
+              id: 'short_seed_2',
+              username: 'sand.storm',
+              userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sand.storm',
+              videoUrl: PRESET_SHORTS[1].url,
+              caption: 'Sailing across the golden Egyptian desert sands 🏜️🌬️',
+              musicTitle: 'Arabian Night Vibes',
+              likes: 512,
+              likedBy: [],
+              commentsCount: 12,
+              isCustom: false,
+              createdAt: new Date().toISOString(),
+              ownerId: 'system-seed',
+              views: 78
+            }
+          ];
+
+          for (const s of defaultShorts) {
+            await setDoc(doc(db, 'social_shorts', s.id), s);
+          }
+
+          await setDoc(seedingRef, { social_seeded: true });
+        }
+      } catch (err) {
+        console.error("Failed to seed database:", err);
+      }
+    };
+    runSeeding();
+  }, [db]);
+
   // Initialize Data from Firestore
   useEffect(() => {
     if (!db) {
@@ -389,9 +624,22 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
       const savedPosts = localStorage.getItem('social_posts') || '[]';
       const savedShorts = localStorage.getItem('social_shorts') || '[]';
       const savedStories = localStorage.getItem('social_stories') || '[]';
+      const savedFollows = localStorage.getItem('social_follows') || '[]';
+      const savedPlaylists = localStorage.getItem('social_playlists') || '[]';
       setPosts(JSON.parse(savedPosts));
       setShorts(JSON.parse(savedShorts));
-      setStories(JSON.parse(savedStories));
+      const parsedStories = JSON.parse(savedStories);
+      const now = Date.now();
+      const filteredStories = parsedStories.filter((s: any) => {
+        const createdAt = s.createdAt || '';
+        const isExpired = createdAt && (now - new Date(createdAt).getTime() > 24 * 60 * 60 * 1000);
+        return !isExpired;
+      });
+      setStories(filteredStories);
+      setPlaylists(JSON.parse(savedPlaylists));
+      const parsedFollows = JSON.parse(savedFollows);
+      setFollowedUsers(parsedFollows);
+      setFollowerCount(parsedFollows.length);
       return;
     }
 
@@ -412,7 +660,9 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
           likedBy: data.likedBy || [],
           comments: data.comments || [],
           createdAt: data.createdAt || '',
-          isCustom: data.isCustom ?? true
+          isCustom: data.isCustom ?? true,
+          ownerId: data.ownerId || '',
+          views: data.views || Math.floor(Math.random() * 25) + 5
         });
       });
 
@@ -423,44 +673,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
         return timeB - timeA;
       });
 
-      // Seed if absolutely empty
-      if (postsData.length === 0) {
-        const defaultPosts: SocialPost[] = [
-          {
-            id: 'post_seed_1',
-            username: 'cyber.wave',
-            userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=cyber.wave',
-            image: PRESET_IMAGES[0].url,
-            caption: 'Late night walk in beautiful cyber Tokyo! 🏮✨',
-            location: 'Tokyo, Japan',
-            likes: 42,
-            likedBy: [],
-            comments: [
-              { id: 'c1', username: 'egypt.explorer', text: 'This looks incredibly unreal! 😍', createdAt: '2h ago' }
-            ],
-            createdAt: new Date(Date.now() - 3600000 * 3).toISOString()
-          },
-          {
-            id: 'post_seed_2',
-            username: 'egypt.explorer',
-            userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=egypt.explorer',
-            image: PRESET_IMAGES[1].url,
-            caption: 'Standing before the timeless pyramids of Giza. Absolute magic. 🇪🇬🐪',
-            location: 'Giza, Egypt',
-            likes: 128,
-            likedBy: [],
-            comments: [],
-            createdAt: new Date(Date.now() - 3600000 * 24).toISOString()
-          }
-        ];
-        setPosts(defaultPosts);
-        // Async write to firestore
-        defaultPosts.forEach(p => {
-          addDoc(collection(db, 'social_posts'), p).catch(err => console.error("Post seed write error:", err));
-        });
-      } else {
-        setPosts(postsData);
-      }
+      setPosts(postsData);
     }, (error) => {
       console.error("Error reading social_posts from Firestore:", error);
     });
@@ -481,50 +694,17 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
           likes: data.likes || 0,
           likedBy: data.likedBy || [],
           commentsCount: data.commentsCount || 0,
-          isCustom: data.isCustom ?? true
+          isCustom: data.isCustom ?? true,
+          createdAt: data.createdAt || '',
+          ownerId: data.ownerId || '',
+          views: data.views || Math.floor(Math.random() * 45) + 8
         });
       });
 
       // Sort in-memory by id or index to maintain consistency
       shortsData.sort((a, b) => b.id.localeCompare(a.id));
 
-      if (shortsData.length === 0) {
-        const defaultShorts: MShort[] = [
-          {
-            id: 'short_seed_1',
-            username: 'neon.runner',
-            userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=neon.runner',
-            videoUrl: PRESET_SHORTS[0].url,
-            caption: 'Cyberpunk nights in the digital realm 🌌✨',
-            musicTitle: 'Cyber Aesthetics Lo-Fi',
-            likes: 234,
-            likedBy: [],
-            commentsCount: 5,
-            isCustom: false
-          },
-          {
-            id: 'short_seed_2',
-            username: 'sand.storm',
-            userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sand.storm',
-            videoUrl: PRESET_SHORTS[1].url,
-            caption: 'Sailing across the golden Egyptian desert sands 🏜️🌬️',
-            musicTitle: 'Arabian Night Vibes',
-            likes: 512,
-            likedBy: [],
-            commentsCount: 12,
-            isCustom: false
-          }
-        ];
-        setShorts(defaultShorts);
-        defaultShorts.forEach(s => {
-          addDoc(collection(db, 'social_shorts'), {
-            ...s,
-            createdAt: new Date().toISOString()
-          }).catch(err => console.error("Short seed write error:", err));
-        });
-      } else {
-        setShorts(shortsData);
-      }
+      setShorts(shortsData);
     }, (error) => {
       console.error("Error reading social_shorts from Firestore:", error);
     });
@@ -533,28 +713,92 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
     const storiesQuery = collection(db, 'social_stories');
     const unsubscribeStories = onSnapshot(storiesQuery, (snapshot) => {
       const storiesData: UserStory[] = [];
+      const now = Date.now();
       snapshot.forEach((doc) => {
         const data = doc.data();
-        storiesData.push({
-          id: doc.id,
-          username: data.username || '',
-          avatar: data.avatar || '',
-          imageUrl: data.imageUrl || '',
-          text: data.text || '',
-          hasViewed: data.hasViewed || false
-        });
+        const createdAt = data.createdAt || '';
+        const isExpired = createdAt && (now - new Date(createdAt).getTime() > 24 * 60 * 60 * 1000);
+        if (!isExpired) {
+          storiesData.push({
+            id: doc.id,
+            username: data.username || '',
+            avatar: data.avatar || '',
+            imageUrl: data.imageUrl || '',
+            text: data.text || '',
+            hasViewed: data.hasViewed || false,
+            ownerId: data.ownerId || '',
+            createdAt: createdAt
+          });
+        }
       });
       setStories(storiesData);
     }, (error) => {
       console.error("Error reading social_stories from Firestore:", error);
     });
 
+    // Subscribe to social follows
+    const followsQuery = collection(db, 'social_follows');
+    const unsubscribeFollows = onSnapshot(followsQuery, (snapshot) => {
+      const list: string[] = [];
+      let myFollowersCount = 0;
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.followerId === user?.uid) {
+          list.push(data.followedId || data.followedUsername);
+        }
+        if (data.followedId === user?.uid || (data.followedUsername && data.followedUsername === displayName.toLowerCase().replace(/\s+/g, '.'))) {
+          myFollowersCount++;
+        }
+      });
+      setFollowedUsers(list);
+      setFollowerCount(myFollowersCount);
+    }, (error) => {
+      console.error("Error reading social_follows from Firestore:", error);
+    });
+
+    // Subscribe to social playlists
+    const playlistsQuery = collection(db, 'social_playlists');
+    const unsubscribePlaylists = onSnapshot(playlistsQuery, (snapshot) => {
+      const plist: any[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.ownerId === user?.uid) {
+          plist.push({
+            id: doc.id,
+            ...data
+          });
+        }
+      });
+      setPlaylists(plist);
+    }, (error) => {
+      console.error("Error reading social_playlists from Firestore:", error);
+    });
+
     return () => {
       unsubscribePosts();
       unsubscribeShorts();
       unsubscribeStories();
+      unsubscribeFollows();
+      unsubscribePlaylists();
     };
-  }, [db]);
+  }, [db, user, displayName]);
+
+  // Deep linking to specific short
+  useEffect(() => {
+    if (deepLinkShortId && shorts.length > 0) {
+      const index = shorts.findIndex(s => s.id === deepLinkShortId);
+      if (index !== -1) {
+        setActiveTab('shorts');
+        setActiveShortIndex(index);
+        setTimeout(() => {
+          if (containerRef.current) {
+            containerRef.current.scrollTop = index * containerRef.current.clientHeight;
+          }
+        }, 300);
+      }
+      clearDeepLink?.();
+    }
+  }, [deepLinkShortId, shorts, clearDeepLink]);
 
   // Video playback active controller
   useEffect(() => {
@@ -744,6 +988,21 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
   // Create Post/Short/Story Handler
   const handlePublish = async () => {
     const authorUsername = displayName.toLowerCase().replace(/\s+/g, '.');
+
+    // Validation to prevent publishing broken local blob URLs to the database
+    if (createType === 'short') {
+      const finalVideo = videoUrlInput.trim() || PRESET_SHORTS[selectedVideoTemplate].url;
+      if (finalVideo.startsWith('blob:')) {
+        setUploadError("This video is stored locally in your browser and could not be uploaded to the server. Please check the upload error above or select a smaller video to publish it globally.");
+        return;
+      }
+    } else if (createType === 'post') {
+      const finalImage = imageUrlInput.trim() || PRESET_IMAGES[selectedImageTemplate].url;
+      if (finalImage.startsWith('blob:')) {
+        setUploadError("This image is stored locally in your browser and could not be uploaded to the server. Please try uploading a smaller image to publish it globally.");
+        return;
+      }
+    }
     
     if (createType === 'post') {
       const finalImage = imageUrlInput.trim() || PRESET_IMAGES[selectedImageTemplate].url;
@@ -757,7 +1016,9 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
         likedBy: [],
         comments: [],
         createdAt: new Date().toISOString(),
-        isCustom: true
+        isCustom: true,
+        ownerId: user?.uid || '',
+        views: 0
       };
 
       if (db) {
@@ -784,7 +1045,9 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
         likedBy: [],
         commentsCount: 0,
         createdAt: new Date().toISOString(),
-        isCustom: true
+        isCustom: true,
+        ownerId: user?.uid || '',
+        views: 0
       };
 
       if (db) {
@@ -807,7 +1070,8 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
         imageUrl: bgGradientClass,
         text: storyTextInput || 'Hello world! 👋',
         hasViewed: false,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        ownerId: user?.uid || 'guest'
       };
 
       if (db) {
@@ -836,6 +1100,155 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
     } else {
       setActiveTab('feed');
     }
+  };
+
+  // Playlist management helper functions
+  const handleSaveToPlaylist = async (playlistId: string) => {
+    if (!savingItem) return;
+    const targetPlaylist = playlists.find(p => p.id === playlistId);
+    if (!targetPlaylist) return;
+
+    // Check for duplicate items
+    const alreadyExists = targetPlaylist.items?.some((i: any) => i.id === savingItem.id);
+    if (alreadyExists) {
+      alert(`This item is already saved in "${targetPlaylist.name}"!`);
+      setSavingItem(null);
+      return;
+    }
+
+    const itemPayload = {
+      id: savingItem.id,
+      type: savingItem.type,
+      username: savingItem.item.username || '',
+      userAvatar: savingItem.item.userAvatar || '',
+      caption: savingItem.item.caption || '',
+      createdAt: savingItem.item.createdAt || '',
+      ownerId: savingItem.item.ownerId || '',
+      ...(savingItem.type === 'post' 
+        ? { image: savingItem.item.image || '', location: savingItem.item.location || '', likes: savingItem.item.likes || 0, comments: savingItem.item.comments || [] } 
+        : { videoUrl: savingItem.item.videoUrl || '', musicTitle: savingItem.item.musicTitle || '', likes: savingItem.item.likes || 0, commentsCount: savingItem.item.commentsCount || 0 }
+      )
+    };
+
+    const updatedItems = [...(targetPlaylist.items || []), itemPayload];
+
+    if (db) {
+      try {
+        const playlistRef = doc(db, 'social_playlists', playlistId);
+        await updateDoc(playlistRef, {
+          items: updatedItems
+        });
+      } catch (err) {
+        console.error("Error updating playlist in Firestore:", err);
+      }
+    } else {
+      const updatedPlaylists = playlists.map(p => {
+        if (p.id === playlistId) {
+          return { ...p, items: updatedItems };
+        }
+        return p;
+      });
+      setPlaylists(updatedPlaylists);
+      localStorage.setItem('social_playlists', JSON.stringify(updatedPlaylists));
+    }
+
+    alert(`Saved to "${targetPlaylist.name}" successfully!`);
+    setSavingItem(null);
+  };
+
+  const handleCreateAndSavePlaylist = async (name: string) => {
+    if (!name.trim()) return;
+
+    const itemPayload = savingItem ? {
+      id: savingItem.id,
+      type: savingItem.type,
+      username: savingItem.item.username || '',
+      userAvatar: savingItem.item.userAvatar || '',
+      caption: savingItem.item.caption || '',
+      createdAt: savingItem.item.createdAt || '',
+      ownerId: savingItem.item.ownerId || '',
+      ...(savingItem.type === 'post' 
+        ? { image: savingItem.item.image || '', location: savingItem.item.location || '', likes: savingItem.item.likes || 0, comments: savingItem.item.comments || [] } 
+        : { videoUrl: savingItem.item.videoUrl || '', musicTitle: savingItem.item.musicTitle || '', likes: savingItem.item.likes || 0, commentsCount: savingItem.item.commentsCount || 0 }
+      )
+    } : null;
+    
+    const newPlaylist = {
+      name: name.trim(),
+      ownerId: user?.uid || 'guest',
+      createdAt: new Date().toISOString(),
+      items: itemPayload ? [itemPayload] : []
+    };
+
+    if (db) {
+      try {
+        await addDoc(collection(db, 'social_playlists'), newPlaylist);
+      } catch (err) {
+        console.error("Error creating playlist in Firestore:", err);
+      }
+    } else {
+      const localPlaylist = {
+        id: 'playlist_' + Date.now(),
+        ...newPlaylist
+      };
+      const updated = [...playlists, localPlaylist];
+      setPlaylists(updated);
+      localStorage.setItem('social_playlists', JSON.stringify(updated));
+    }
+
+    alert(savingItem ? `Playlist "${name.trim()}" created and saved successfully!` : `Playlist "${name.trim()}" created!`);
+    setNewPlaylistName('');
+    setSavingItem(null);
+  };
+
+  const handleDeletePlaylist = async (playlistId: string) => {
+    if (!confirm("Are you sure you want to delete this playlist? This action cannot be undone.")) return;
+
+    if (db) {
+      try {
+        await deleteDoc(doc(db, 'social_playlists', playlistId));
+      } catch (err) {
+        console.error("Error deleting playlist from Firestore:", err);
+      }
+    } else {
+      const updated = playlists.filter(p => p.id !== playlistId);
+      setPlaylists(updated);
+      localStorage.setItem('social_playlists', JSON.stringify(updated));
+    }
+    
+    if (selectedPlaylistIdForView === playlistId) {
+      setSelectedPlaylistIdForView(null);
+    }
+    alert("Playlist deleted successfully.");
+  };
+
+  const handleRemoveFromPlaylist = async (playlistId: string, itemId: string) => {
+    const targetPlaylist = playlists.find(p => p.id === playlistId);
+    if (!targetPlaylist) return;
+
+    const updatedItems = (targetPlaylist.items || []).filter((item: any) => item.id !== itemId);
+
+    if (db) {
+      try {
+        const playlistRef = doc(db, 'social_playlists', playlistId);
+        await updateDoc(playlistRef, {
+          items: updatedItems
+        });
+      } catch (err) {
+        console.error("Error updating playlist in Firestore:", err);
+      }
+    } else {
+      const updatedPlaylists = playlists.map(p => {
+        if (p.id === playlistId) {
+          return { ...p, items: updatedItems };
+        }
+        return p;
+      });
+      setPlaylists(updatedPlaylists);
+      localStorage.setItem('social_playlists', JSON.stringify(updatedPlaylists));
+    }
+
+    alert("Item removed from playlist.");
   };
 
   // Profile Edit Save
@@ -957,7 +1370,21 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                           <img src={post.userAvatar} className="w-full h-full object-cover" />
                         </div>
                         <div>
-                          <p className="text-xs font-black tracking-wide text-white">{post.username}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-black tracking-wide text-white">{post.username}</p>
+                            {post.username !== displayName.toLowerCase().replace(/\s+/g, '.') && (
+                              <button
+                                onClick={() => handleToggleFollow(post.username, post.ownerId)}
+                                className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                                  followedUsers.includes(post.ownerId || post.username)
+                                    ? 'bg-white/10 border-white/20 text-slate-300'
+                                    : 'bg-pink-500 hover:bg-pink-600 border-transparent text-white active:scale-95 shadow-md shadow-pink-500/15'
+                                }`}
+                              >
+                                {followedUsers.includes(post.ownerId || post.username) ? 'Following' : 'Follow'}
+                              </button>
+                            )}
+                          </div>
                           {post.location && (
                             <p className="text-[9px] text-slate-400 flex items-center gap-0.5">
                               <MapPin className="w-2.5 h-2.5 text-pink-500" />
@@ -966,9 +1393,30 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                           )}
                         </div>
                       </div>
-                      <button className="p-1.5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => setInfoContent({
+                            type: 'post',
+                            caption: post.caption,
+                            date: post.createdAt,
+                            views: post.views || 0,
+                            likes: post.likes
+                          })}
+                          className="p-1.5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors cursor-pointer"
+                          title="View post info"
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                        {(post.ownerId === user?.uid || post.username === displayName.toLowerCase().replace(/\s+/g, '.')) && (
+                          <button 
+                            onClick={() => setDeletingContent({ type: 'post', id: post.id })}
+                            className="p-1.5 hover:bg-red-500/20 rounded-full text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                            title="Delete post"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Post Image (with double tap interaction) */}
@@ -1031,9 +1479,22 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                             <Send className="w-6 h-6" />
                           </button>
                         </div>
-                        <button className="p-1.5 text-slate-200 hover:text-white rounded-full hover:bg-white/5 transition-colors">
-                          <Bookmark className="w-6 h-6" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => setReportingItem({ type: 'post', id: post.id, item: post })}
+                            className="p-1.5 text-slate-200 hover:text-red-500 rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+                            title="Report Post"
+                          >
+                            <Flag className="w-6 h-6" />
+                          </button>
+                          <button 
+                            onClick={() => setSavingItem({ type: 'post', id: post.id, item: post })}
+                            className="p-1.5 text-slate-200 hover:text-pink-500 rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+                            title="Save to playlist"
+                          >
+                            <Bookmark className="w-6 h-6" />
+                          </button>
+                        </div>
                       </div>
 
                     {/* Likes & Caption */}
@@ -1124,7 +1585,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                   const isPaused = !!pausedMap[short.id];
 
                   return (
-                    <div key={short.id} className="w-full h-full snap-start snap-always relative shrink-0 flex flex-col justify-center items-center bg-zinc-950">
+                    <div id={`short-player-${short.id}`} key={short.id} className="w-full h-full snap-start snap-always relative shrink-0 flex flex-col justify-center items-center bg-zinc-950">
                       {/* Vertical Video Element */}
                       <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
                         <video 
@@ -1185,6 +1646,30 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                           <span className="text-[10px] font-bold text-white drop-shadow-md">{short.likes}</span>
                         </div>
 
+                        {/* Save/Bookmark Button */}
+                        <div className="flex flex-col items-center gap-1">
+                          <button 
+                            onClick={() => setSavingItem({ type: 'short', id: short.id, item: short })}
+                            className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 hover:text-pink-400 transition-all active:scale-75 shadow-lg cursor-pointer"
+                            title="Save to playlist"
+                          >
+                            <Bookmark className="w-5 h-5" />
+                          </button>
+                          <span className="text-[10px] font-bold text-white drop-shadow-md">Save</span>
+                        </div>
+
+                        {/* Report Button */}
+                        <div className="flex flex-col items-center gap-1">
+                          <button 
+                            onClick={() => setReportingItem({ type: 'short', id: short.id, item: short })}
+                            className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 hover:text-red-400 transition-all active:scale-75 shadow-lg cursor-pointer"
+                            title="Report Short"
+                          >
+                            <Flag className="w-5 h-5" />
+                          </button>
+                          <span className="text-[10px] font-bold text-white drop-shadow-md">Report</span>
+                        </div>
+
                         {/* Mute Button */}
                         <button 
                           onClick={() => setIsMuted(!isMuted)}
@@ -1229,6 +1714,46 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
                           </svg>
                         </button>
+
+                        {/* Direct Share Button */}
+                        <button 
+                          onClick={() => setSharingContent({
+                            type: 'short',
+                            id: short.id,
+                            caption: short.caption,
+                            url: short.videoUrl
+                          })}
+                          className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
+                          title="Share video"
+                        >
+                          <Send className="w-5 h-5" />
+                        </button>
+
+                        {/* Info Button */}
+                        <button 
+                          onClick={() => setInfoContent({
+                            type: 'short',
+                            caption: short.caption,
+                            date: short.createdAt || 'Released recently',
+                            views: short.views || 0,
+                            likes: short.likes
+                          })}
+                          className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
+                          title="Video Info"
+                        >
+                          <Info className="w-5 h-5" />
+                        </button>
+
+                        {/* Delete Button (Owner only) */}
+                        {(short.ownerId === user?.uid || short.username === displayName.toLowerCase().replace(/\s+/g, '.')) && (
+                          <button 
+                            onClick={() => setDeletingContent({ type: 'short', id: short.id })}
+                            className="p-3 rounded-full bg-red-500/25 backdrop-blur-md border border-red-500/40 text-red-400 hover:bg-red-500/40 transition-all active:scale-75 shadow-lg cursor-pointer"
+                            title="Delete video"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
 
                       {/* m shorts overlay label */}
@@ -1246,6 +1771,18 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                             <img src={short.userAvatar} className="w-full h-full object-cover" />
                           </div>
                           <span className="text-xs font-black text-white drop-shadow-md">{short.username}</span>
+                          {short.username !== displayName.toLowerCase().replace(/\s+/g, '.') && (
+                            <button
+                              onClick={() => handleToggleFollow(short.username, short.ownerId)}
+                              className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border transition-all cursor-pointer pointer-events-auto ${
+                                followedUsers.includes(short.ownerId || short.username)
+                                  ? 'bg-white/10 border-white/20 text-slate-300'
+                                  : 'bg-pink-500 hover:bg-pink-600 border-transparent text-white active:scale-95'
+                              }`}
+                            >
+                              {followedUsers.includes(short.ownerId || short.username) ? 'Following' : 'Follow'}
+                            </button>
+                          )}
                           <span className="px-1.5 py-0.5 bg-pink-500/80 rounded text-[8px] font-bold uppercase text-white drop-shadow-md">Creator</span>
                         </div>
 
@@ -1351,7 +1888,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                       {uploading ? (
                         <div className="flex flex-col items-center gap-2">
                           <span className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-[10px] font-bold text-slate-400">Uploading to server...</span>
+                          <span className="text-[10px] font-bold text-slate-400">Uploading to server ({uploadProgress}%)...</span>
                         </div>
                       ) : imageUrlInput ? (
                         <div className="flex flex-col items-center gap-2 text-center">
@@ -1370,6 +1907,11 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                         </>
                       )}
                     </div>
+                    {uploadError && (
+                      <p className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg text-center font-mono">
+                        ⚠️ {uploadError}
+                      </p>
+                    )}
                   </div>
 
                   {/* Or input custom image URL */}
@@ -1449,7 +1991,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                       {uploading ? (
                         <div className="flex flex-col items-center gap-2">
                           <span className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-[10px] font-bold text-slate-400">Uploading to server...</span>
+                          <span className="text-[10px] font-bold text-slate-400">Uploading to server ({uploadProgress}%)...</span>
                         </div>
                       ) : videoUrlInput ? (
                         <div className="flex flex-col items-center gap-2 text-center">
@@ -1466,6 +2008,11 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                         </>
                       )}
                     </div>
+                    {uploadError && (
+                      <p className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg text-center font-mono">
+                        ⚠️ {uploadError}
+                      </p>
+                    )}
                   </div>
 
                   {/* Custom Video URL */}
@@ -1627,7 +2174,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                       shorts
                     </div>
                     <div>
-                      <span className="font-black text-white text-sm mr-1">{contacts.length}</span>
+                      <span className="font-black text-white text-sm mr-1">{followerCount}</span>
                       followers
                     </div>
                   </div>
@@ -1682,6 +2229,17 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                   <Tv className="w-4 h-4" />
                   m shorts
                 </button>
+                <button 
+                  onClick={() => setProfileSubTab('playlists')}
+                  className={`text-xs font-black uppercase tracking-widest pb-2 flex items-center gap-1.5 transition-all ${
+                    profileSubTab === 'playlists'
+                      ? 'text-pink-500 border-b-2 border-pink-500'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Bookmark className="w-4 h-4" />
+                  Playlists
+                </button>
               </div>
 
               {profileSubTab === 'photos' ? (
@@ -1706,7 +2264,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No Photos Published Yet</p>
                   </div>
                 )
-              ) : (
+              ) : profileSubTab === 'shorts' ? (
                 /* Grid of Shorts */
                 shorts.filter(s => s.username === displayName.toLowerCase().replace(/\s+/g, '.')).length > 0 ? (
                   <div className="grid grid-cols-3 gap-2">
@@ -1744,6 +2302,147 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No m shorts Published Yet</p>
                   </div>
                 )
+              ) : (
+                /* Playlists Subtab View */
+                <div className="space-y-4">
+                  {selectedPlaylistForView ? (
+                    /* Detailed Playlist View */
+                    <div className="space-y-4 bg-white/5 border border-white/10 p-5 rounded-3xl">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                        <button 
+                          onClick={() => setSelectedPlaylistIdForView(null)}
+                          className="px-3 py-1.5 bg-white/10 hover:bg-white/15 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" /> Back
+                        </button>
+                        <h3 className="text-sm font-black text-white tracking-wide uppercase">{selectedPlaylistForView.name}</h3>
+                        <button 
+                          onClick={() => handleDeletePlaylist(selectedPlaylistForView.id)}
+                          className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
+                        </button>
+                      </div>
+
+                      {(!selectedPlaylistForView.items || selectedPlaylistForView.items.length === 0) ? (
+                        <div className="text-center py-10 space-y-2">
+                          <Bookmark className="w-8 h-8 text-slate-600 mx-auto" />
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">This Playlist Is Empty</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {selectedPlaylistForView.items.map((item: any) => (
+                            <div key={item.id} className="bg-slate-900/60 rounded-2xl overflow-hidden border border-white/10 p-3 space-y-3 flex flex-col justify-between">
+                              <div className="space-y-2">
+                                <div className="aspect-square rounded-xl overflow-hidden relative bg-black">
+                                  {item.type === 'short' ? (
+                                    <video src={item.videoUrl} className="w-full h-full object-cover" muted playsInline />
+                                  ) : (
+                                    <img src={item.image} className="w-full h-full object-cover" />
+                                  )}
+                                  <span className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[7px] font-black uppercase tracking-wider text-pink-400 border border-pink-500/10">
+                                    {item.type}
+                                  </span>
+                                </div>
+                                <div className="text-left">
+                                  <p className="text-[10px] font-bold text-slate-200 line-clamp-1">@{item.username}</p>
+                                  <p className="text-[9px] text-slate-400 line-clamp-2">{item.caption}</p>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => {
+                                    if (item.type === 'short') {
+                                      const sIdx = shorts.findIndex(s => s.id === item.id);
+                                      if (sIdx !== -1) setActiveShortIndex(sIdx);
+                                      setActiveTab('shorts');
+                                    } else {
+                                      setActiveTab('feed');
+                                    }
+                                  }}
+                                  className="flex-1 py-1.5 bg-white/10 hover:bg-white/15 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-200 text-center cursor-pointer transition-all"
+                                >
+                                  View
+                                </button>
+                                <button 
+                                  onClick={() => handleRemoveFromPlaylist(selectedPlaylistForView.id, item.id)}
+                                  className="p-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl cursor-pointer transition-all flex items-center justify-center"
+                                  title="Remove from playlist"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Playlists List View & Creator */
+                    <div className="space-y-4">
+                      {/* Inline playlist creator */}
+                      <div className="bg-white/5 border border-white/10 p-4 rounded-3xl flex gap-2 items-center">
+                        <input 
+                          type="text" 
+                          placeholder="New Playlist Name..." 
+                          value={newPlaylistName}
+                          onChange={(e) => setNewPlaylistName(e.target.value)}
+                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 transition-colors"
+                        />
+                        <button 
+                          onClick={() => {
+                            if (!newPlaylistName.trim()) return;
+                            handleCreateAndSavePlaylist(newPlaylistName);
+                          }}
+                          className="px-4 py-1.5 bg-pink-500 hover:bg-pink-600 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                        >
+                          <PlusSquare className="w-3.5 h-3.5" /> Create
+                        </button>
+                      </div>
+
+                      {playlists.length === 0 ? (
+                        <div className="text-center py-10 bg-white/5 border border-white/10 rounded-3xl space-y-3">
+                          <Bookmark className="w-8 h-8 text-slate-600 mx-auto animate-pulse" />
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No Playlists Created Yet</p>
+                          <p className="text-[9px] text-slate-500">Create one above or save items from the feed!</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {playlists.map(playlist => (
+                            <div 
+                              key={playlist.id}
+                              onClick={() => setSelectedPlaylistIdForView(playlist.id)}
+                              className="bg-white/5 hover:bg-white/10 border border-white/10 hover:border-pink-500/30 p-4 rounded-3xl flex items-center justify-between transition-all cursor-pointer group"
+                            >
+                              <div className="flex items-center gap-3.5">
+                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-600/30 to-purple-600/30 border border-pink-500/10 flex items-center justify-center text-pink-400 shrink-0">
+                                  <Bookmark className="w-5 h-5" />
+                                </div>
+                                <div className="text-left">
+                                  <h4 className="text-xs font-black text-white tracking-wide uppercase">{playlist.name}</h4>
+                                  <p className="text-[9px] text-slate-400">{(playlist.items || []).length} items saved</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-pink-500 opacity-0 group-hover:opacity-100 transition-opacity">Open &rarr;</span>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeletePlaylist(playlist.id);
+                                  }}
+                                  className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl cursor-pointer opacity-60 hover:opacity-100 transition-all flex items-center justify-center"
+                                  title="Delete playlist"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -1784,12 +2483,38 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                     </div>
                     <span className="text-xs font-black text-white drop-shadow-md">{selectedStory.username}</span>
                   </div>
-                  <button 
-                    onClick={() => setSelectedStory(null)}
-                    className="p-1.5 bg-black/40 hover:bg-black/60 rounded-full text-white"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {(selectedStory.ownerId === user?.uid || selectedStory.username === user?.displayName?.toLowerCase().replace(/\s+/g, '.')) && (
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm("Are you sure you want to delete your story?")) return;
+                          if (db) {
+                            try {
+                              await deleteDoc(doc(db, 'social_stories', selectedStory.id));
+                            } catch (err) {
+                              console.error("Error deleting story:", err);
+                            }
+                          } else {
+                            const updated = stories.filter(s => s.id !== selectedStory.id);
+                            setStories(updated);
+                            localStorage.setItem('social_stories', JSON.stringify(updated));
+                          }
+                          setSelectedStory(null);
+                        }}
+                        className="p-1.5 bg-red-600/60 hover:bg-red-600 rounded-full text-white cursor-pointer transition-all"
+                        title="Delete Story"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setSelectedStory(null)}
+                      className="p-1.5 bg-black/40 hover:bg-black/60 rounded-full text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1967,6 +2692,282 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({ user, onClose, curre
                     );
                   })
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Delete Confirmation Warning Modal */}
+        {deletingContent && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[160] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-slate-900 border border-red-500/25 rounded-3xl p-6 w-full max-w-sm space-y-5 shadow-2xl relative"
+            >
+              <div className="flex flex-col items-center text-center space-y-3">
+                <div className="p-3 bg-red-500/10 text-red-500 rounded-full border border-red-500/20">
+                  <Trash2 className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-black uppercase tracking-wider text-white">Confirm Removal</h3>
+                <p className="text-xs text-slate-300">
+                  Are you absolutely sure you want to delete this {deletingContent.type}? This action is permanent and cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setDeletingContent(null)}
+                  className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-black uppercase tracking-widest text-slate-300 cursor-pointer active:scale-98 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => handleDeleteContent(deletingContent.type, deletingContent.id)}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 rounded-xl text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-red-600/25 cursor-pointer active:scale-98 transition-all"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Content Info Modal */}
+        {infoContent && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[160] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-slate-900 border border-white/15 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative text-left"
+            >
+              <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                <h3 className="text-sm font-black uppercase tracking-widest text-white flex items-center gap-1.5">
+                  <Info className="w-4 h-4 text-pink-500" />
+                  {infoContent.type === 'short' ? 'Video details' : 'Post details'}
+                </h3>
+                <button 
+                  onClick={() => setInfoContent(null)}
+                  className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block mb-1">Description</span>
+                  <p className="text-slate-200 bg-white/5 p-3 rounded-xl border border-white/5 italic">
+                    "{infoContent.caption || 'No description provided.'}"
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 py-2">
+                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5 text-center">
+                    <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block">Views</span>
+                    <span className="text-lg font-black text-white">{infoContent.views}</span>
+                  </div>
+                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5 text-center">
+                    <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block">Likes</span>
+                    <span className="text-lg font-black text-white">{infoContent.likes}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block mb-1">Release Date</span>
+                  <p className="text-slate-300 font-medium">
+                    {infoContent.date ? new Date(infoContent.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Just now'}
+                  </p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setInfoContent(null)}
+                className="w-full py-2.5 bg-gradient-to-r from-pink-500 to-yellow-500 rounded-xl text-xs font-black uppercase tracking-widest text-white shadow-lg cursor-pointer active:scale-98 transition-all"
+              >
+                Done
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Save to Playlist Modal Overlay */}
+        {savingItem && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[160] bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-slate-900 border border-white/15 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative text-left"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div>
+                  <h4 className="text-sm font-black uppercase tracking-widest text-white">Save to Playlist</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Select a playlist or create a new one</p>
+                </div>
+                <button 
+                  onClick={() => setSavingItem(null)} 
+                  className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Saved Item Mini-preview */}
+              <div className="flex items-center gap-3 p-2 bg-white/5 border border-white/5 rounded-2xl">
+                <div className="w-12 h-12 rounded-xl overflow-hidden bg-black shrink-0">
+                  {savingItem.type === 'short' ? (
+                    <video src={savingItem.item.videoUrl} className="w-full h-full object-cover" muted />
+                  ) : (
+                    <img src={savingItem.item.image} className="w-full h-full object-cover" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded text-[8px] font-black uppercase tracking-wide">
+                    {savingItem.type}
+                  </span>
+                  <p className="text-[11px] text-slate-200 truncate mt-1 font-medium">{savingItem.item.caption || 'No caption'}</p>
+                </div>
+              </div>
+
+              {/* Playlists Selection List */}
+              <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-none pr-1">
+                {playlists.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">No playlists available yet.</p>
+                  </div>
+                ) : (
+                  playlists.map(playlist => (
+                    <button
+                      key={playlist.id}
+                      onClick={() => handleSaveToPlaylist(playlist.id)}
+                      className="w-full flex items-center justify-between p-2.5 bg-white/5 hover:bg-pink-500/10 border border-white/5 hover:border-pink-500/20 rounded-xl transition-all text-left group"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Bookmark className="w-4 h-4 text-pink-400 shrink-0" />
+                        <span className="text-xs font-black text-white uppercase tracking-wide">{playlist.name}</span>
+                      </div>
+                      <span className="text-[9px] font-bold text-slate-400 group-hover:text-pink-400">{(playlist.items || []).length} items</span>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {/* Playlist creation during saving */}
+              <div className="border-t border-white/10 pt-3 space-y-2">
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Create New Playlist & Save</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="New Playlist Name..." 
+                    value={newPlaylistName}
+                    onChange={(e) => setNewPlaylistName(e.target.value)}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 transition-colors"
+                  />
+                  <button 
+                    onClick={() => {
+                      if (!newPlaylistName.trim()) return;
+                      handleCreateAndSavePlaylist(newPlaylistName);
+                    }}
+                    className="px-4 py-1.5 bg-pink-500 hover:bg-pink-600 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    Create & Save
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Report Content Modal Overlay */}
+        {reportingItem && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[160] bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-slate-900 border border-white/15 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative text-left"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div>
+                  <h4 className="text-sm font-black uppercase tracking-widest text-white flex items-center gap-2">
+                    <Flag className="w-4 h-4 text-red-500 animate-pulse" /> Report Content
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Let us know what is wrong with this post</p>
+                </div>
+                <button 
+                  onClick={() => { setReportingItem(null); setReportReason(''); }} 
+                  className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Reported Item Mini-preview */}
+              <div className="flex items-center gap-3 p-2 bg-white/5 border border-white/5 rounded-2xl">
+                <div className="w-12 h-12 rounded-xl overflow-hidden bg-black shrink-0">
+                  {reportingItem.type === 'short' ? (
+                    <video src={reportingItem.item.videoUrl} className="w-full h-full object-cover" muted />
+                  ) : (
+                    <img src={reportingItem.item.image} className="w-full h-full object-cover" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded text-[8px] font-black uppercase tracking-wide">
+                    {reportingItem.type}
+                  </span>
+                  <p className="text-[11px] text-slate-200 truncate mt-1 font-medium">@{reportingItem.item.username}</p>
+                </div>
+              </div>
+
+              {/* Report Input field */}
+              <div className="space-y-2">
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reason for reporting</label>
+                <textarea 
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  placeholder="Tell us why this content is inappropriate (e.g., harassment, spam, copyright violation)..."
+                  rows={3}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500/50 transition-colors resize-none"
+                />
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleReportSubmit}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all cursor-pointer text-center"
+                >
+                  Submit Report
+                </button>
+                <button 
+                  onClick={() => { setReportingItem(null); setReportReason(''); }}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
               </div>
             </motion.div>
           </motion.div>

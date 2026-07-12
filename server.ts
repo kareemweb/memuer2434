@@ -54,8 +54,8 @@ async function startServer() {
   const PORT = 3000;
 
   // Increase payload limit for base64 file transmissions
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "500mb" }));
+  app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
   // Create uploads folder inside public if it doesn't exist
   const uploadsDir = path.join(process.cwd(), "public", "uploads");
@@ -1330,6 +1330,73 @@ async function startServer() {
   // Live World Cup real-time API backed by Google Search Grounding & Gemini
   app.get("/api/worldcup/matches", async (req, res) => {
     return res.json({ matches: WORLD_CUP_MATCHES, realTime: true });
+  });
+
+  // Create temp uploads directory for chunks
+  const chunkTempDir = path.join(process.cwd(), "public", "uploads", "temp");
+  if (!fs.existsSync(chunkTempDir)) {
+    fs.mkdirSync(chunkTempDir, { recursive: true });
+  }
+
+  // Chunked upload handler to bypass proxy payload size limits (e.g. nginx 1MB-10MB limits)
+  app.post("/api/upload/chunk", async (req, res) => {
+    try {
+      const { uploadId, chunkIndex, totalChunks, chunkData, filename } = req.body;
+      if (!uploadId || chunkIndex === undefined || totalChunks === undefined || !chunkData) {
+        return res.status(400).json({ error: "Missing required chunk upload parameters." });
+      }
+
+      // Convert Base64 back into raw binary bytes
+      const base64Data = chunkData.replace(/^data:[^;]+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+
+      // Save chunk file inside user-specific temp directory
+      const userTempDir = path.join(chunkTempDir, uploadId);
+      if (!fs.existsSync(userTempDir)) {
+        fs.mkdirSync(userTempDir, { recursive: true });
+      }
+
+      const chunkPath = path.join(userTempDir, `chunk_${chunkIndex}`);
+      await fs.promises.writeFile(chunkPath, buffer);
+
+      // Check if we have received all chunks
+      let allChunksReceived = true;
+      for (let i = 0; i < totalChunks; i++) {
+        if (!fs.existsSync(path.join(userTempDir, `chunk_${i}`))) {
+          allChunksReceived = false;
+          break;
+        }
+      }
+
+      if (allChunksReceived) {
+        // Merge all chunks
+        const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+        const safeFilename = `${Date.now()}_${sanitizedFilename}`;
+        const finalFilePath = path.join(uploadsDir, safeFilename);
+
+        const writeStream = fs.createWriteStream(finalFilePath);
+        for (let i = 0; i < totalChunks; i++) {
+          const currentChunkPath = path.join(userTempDir, `chunk_${i}`);
+          const data = await fs.promises.readFile(currentChunkPath);
+          writeStream.write(data);
+        }
+        writeStream.end();
+
+        // Wait slightly for the writeStream to completely close
+        await new Promise<void>((resolve) => writeStream.on("finish", () => resolve()));
+
+        // Clean up temp chunk files
+        await fs.promises.rm(userTempDir, { recursive: true, force: true }).catch(e => console.error("Error cleaning up chunk files:", e));
+
+        const fileUrl = `/uploads/${safeFilename}`;
+        return res.json({ url: fileUrl, completed: true });
+      }
+
+      return res.json({ completed: false, chunkIndex });
+    } catch (err: any) {
+      console.error("Chunk upload error:", err);
+      res.status(500).json({ error: err?.message || "Failed to write chunk to disk." });
+    }
   });
 
   // Custom high-performance secure media/photo/video upload handler (bypasses unconfigured storage buckets)

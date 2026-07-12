@@ -189,7 +189,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && !isTemporarilyBanned();
       allow update: if isSignedIn() && !isTemporarilyBanned();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
     }
 
     // --- Social Shorts ---
@@ -197,7 +197,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && !isTemporarilyBanned();
       allow update: if isSignedIn() && !isTemporarilyBanned();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
     }
 
     // --- Social Stories ---
@@ -205,7 +205,22 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && !isTemporarilyBanned();
       allow update: if isSignedIn() && !isTemporarilyBanned();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
+    }
+
+    // --- Social Follows ---
+    match /social_follows/{followId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && !isTemporarilyBanned() && incoming().followerId == request.auth.uid;
+      allow delete: if isSignedIn() && (existing().followerId == request.auth.uid || isAdmin());
+    }
+
+    // --- Social Playlists ---
+    match /social_playlists/{playlistId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && !isTemporarilyBanned() && incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && !isTemporarilyBanned() && existing().ownerId == request.auth.uid && incoming().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
     }
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, Users, Settings, Plus, Search, Phone, Video, Shield, Info, Paperclip, Smile, Send, MoveVertical as MoreVertical, LogOut, User, Camera, Image as ImageIcon, Check, X, Menu, PhoneOff, Mic, MicOff, VideoOff, Volume2, VolumeX, UserX, Copy, Lock, ArrowLeft, ArrowRight, MonitorUp, TriangleAlert as AlertTriangle, FileSliders as Sliders, Wrench, Clock, Archive, Radio, RefreshCw, Mail, ShieldAlert, ShieldCheck, Pin, Eye, EyeOff, Sparkles, Play } from 'lucide-react';
+import { MessageSquare, Users, Settings, Plus, Search, Phone, Video, Shield, Info, Paperclip, Smile, Send, MoveVertical as MoreVertical, LogOut, User, Camera, Image as ImageIcon, Check, X, Menu, PhoneOff, Mic, MicOff, VideoOff, Volume2, VolumeX, UserX, Copy, Lock, ArrowLeft, ArrowRight, MonitorUp, TriangleAlert as AlertTriangle, FileSliders as Sliders, Wrench, Clock, Archive, Radio, RefreshCw, Mail, ShieldAlert, ShieldCheck, Pin, Eye, EyeOff, Sparkles, Play, MapPin, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { useAuth } from './hooks/useAuth';
@@ -582,8 +582,18 @@ export default function App() {
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [adminAllUsers, setAdminAllUsers] = useState<UserProfile[]>([]);
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
-  const [adminActiveTab, setAdminActiveTab] = useState<'users' | 'support' | 'maintenance'>('users');
+  const [adminActiveTab, setAdminActiveTab] = useState<'users' | 'support' | 'maintenance' | 'social' | 'audit'>('users');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+
+  // Social+ moderation states
+  const [adminPosts, setAdminPosts] = useState<any[]>([]);
+  const [adminShorts, setAdminShorts] = useState<any[]>([]);
+  const [adminAuditLogs, setAdminAuditLogs] = useState<any[]>([]);
+  const [adminReports, setAdminReports] = useState<any[]>([]);
+  const [adminRemovalReason, setAdminRemovalReason] = useState<string>('');
+  const [adminSelectedContent, setAdminSelectedContent] = useState<{ type: 'post' | 'short'; id: string; userId?: string; username: string } | null>(null);
+  const [adminSocialSubTab, setAdminSocialSubTab] = useState<'posts' | 'shorts' | 'reports'>('posts');
+  const [socialDeepLinkShortId, setSocialDeepLinkShortId] = useState<string | null>(null);
   const [editingUserName, setEditingUserName] = useState('');
   const [editingUserBioId, setEditingUserBioId] = useState<string | null>(null);
   const [editingUserBio, setEditingUserBio] = useState('');
@@ -3248,6 +3258,188 @@ export default function App() {
     }
   };
 
+  // Load Admin Social+ moderation feeds in real-time
+  useEffect(() => {
+    if (!db || !isUserAdminMe || !isAdminPanelOpen) return;
+
+    const postsQuery = collection(db, 'social_posts');
+    const unsubscribePosts = onSnapshot(postsQuery, (snapshot) => {
+      const postsData: any[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        postsData.push({
+          id: doc.id,
+          username: data.username || '',
+          userAvatar: data.userAvatar || '',
+          image: data.image || '',
+          caption: data.caption || '',
+          location: data.location || '',
+          likes: data.likes || 0,
+          likedBy: data.likedBy || [],
+          comments: data.comments || [],
+          createdAt: data.createdAt || '',
+          ownerId: data.ownerId || ''
+        });
+      });
+      postsData.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      setAdminPosts(postsData);
+    });
+
+    const shortsQuery = collection(db, 'social_shorts');
+    const unsubscribeShorts = onSnapshot(shortsQuery, (snapshot) => {
+      const shortsData: any[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        shortsData.push({
+          id: doc.id,
+          username: data.username || '',
+          userAvatar: data.userAvatar || '',
+          videoUrl: data.videoUrl || '',
+          caption: data.caption || '',
+          musicTitle: data.musicTitle || '',
+          likes: data.likes || 0,
+          likedBy: data.likedBy || [],
+          commentsCount: data.commentsCount || 0,
+          createdAt: data.createdAt || '',
+          ownerId: data.ownerId || ''
+        });
+      });
+      shortsData.sort((a, b) => b.id.localeCompare(a.id));
+      setAdminShorts(shortsData);
+    });
+
+    const auditQuery = collection(db, 'social_audit_logs');
+    const unsubscribeAudit = onSnapshot(auditQuery, (snapshot) => {
+      const auditData: any[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        auditData.push({ id: doc.id, ...data });
+      });
+      auditData.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      setAdminAuditLogs(auditData);
+    });
+
+    const reportsQuery = collection(db, 'social_reports');
+    const unsubscribeReports = onSnapshot(reportsQuery, (snapshot) => {
+      const reportsData: any[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        reportsData.push({ id: doc.id, ...data });
+      });
+      reportsData.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      setAdminReports(reportsData);
+    });
+
+    return () => {
+      unsubscribePosts();
+      unsubscribeShorts();
+      unsubscribeAudit();
+      unsubscribeReports();
+    };
+  }, [db, isUserAdminMe, isAdminPanelOpen]);
+
+  const handleAdminRemoveSocialContent = async (type: 'post' | 'short', id: string, creatorUsername: string, creatorId?: string) => {
+    if (!adminRemovalReason.trim()) {
+      alert("Please provide a reason for removing this content.");
+      return;
+    }
+
+    try {
+      if (type === 'post') {
+        await deleteDoc(doc(db, 'social_posts', id));
+      } else {
+        await deleteDoc(doc(db, 'social_shorts', id));
+      }
+
+      // Record to audit logs collection
+      await addDoc(collection(db, 'social_audit_logs'), {
+        itemId: id,
+        itemType: type,
+        creatorUsername: creatorUsername,
+        creatorId: creatorId || 'unknown',
+        moderatorUsername: user?.displayName || user?.email || auth.currentUser?.email || 'System Admin',
+        moderatorId: auth.currentUser?.uid || 'system',
+        reason: adminRemovalReason,
+        createdAt: new Date().toISOString()
+      });
+
+      // Automatically resolve associated pending reports
+      const pendingReportsToResolve = adminReports.filter(r => r.itemId === id && r.status === 'pending');
+      for (const rep of pendingReportsToResolve) {
+        await updateDoc(doc(db, 'social_reports', rep.id), {
+          status: 'resolved',
+          resolvedAt: new Date().toISOString(),
+          resolvedBy: user?.displayName || auth.currentUser?.email || 'System Admin'
+        });
+      }
+
+      const targetUserId = creatorId;
+      if (targetUserId && targetUserId !== 'guest') {
+        const dmId = `dm_system-support_${targetUserId}`;
+        const chatDocRef = doc(db, 'chats', dmId);
+        const chatDoc = await getDoc(chatDocRef);
+        
+        if (!chatDoc.exists()) {
+          await setDoc(chatDocRef, {
+            type: 'direct',
+            participants: ['system-support', targetUserId],
+            createdAt: new Date().toISOString()
+          });
+        }
+
+        const noticeText = `⚠️ SOCIAL+ MODERATION NOTICE:\n\nYour ${type === 'short' ? 'M Short' : 'Post'} was removed by system administrators.\n\nReason: ${adminRemovalReason}`;
+        
+        await addDoc(collection(db, 'chats', dmId, 'messages'), {
+          senderId: 'system-support',
+          content: noticeText,
+          createdAt: new Date().toISOString(),
+          type: 'admin_notice'
+        });
+
+        await updateDoc(chatDocRef, {
+          lastMessage: `⚠️ Moderation Notice`,
+          lastMessageAt: new Date().toISOString()
+        });
+      }
+
+      setAdminSelectedContent(null);
+      setAdminRemovalReason('');
+      setErrorMessage("Social+ item successfully removed and notice sent.");
+      setTimeout(() => setErrorMessage(null), 3500);
+
+    } catch (err: any) {
+      setErrorMessage(`Failed to moderate content: ${err.message}`);
+      setTimeout(() => setErrorMessage(null), 3000);
+    }
+  };
+
+  const handleAdminResolveReport = async (reportId: string, status: 'resolved' | 'dismissed') => {
+    try {
+      await updateDoc(doc(db, 'social_reports', reportId), {
+        status: status,
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: user?.displayName || auth.currentUser?.email || 'System Admin'
+      });
+      setErrorMessage(`Report has been ${status}.`);
+      setTimeout(() => setErrorMessage(null), 3000);
+    } catch (err: any) {
+      setErrorMessage(`Failed to resolve report: ${err.message}`);
+      setTimeout(() => setErrorMessage(null), 3000);
+    }
+  };
+
   const handleAdminToggleMaintenance = async (active: boolean, durationMinutes?: number) => {
     if (!isUserOwnerMe) {
       setErrorMessage("Unauthorized administrative attempt. Requires owner privileges.");
@@ -5138,9 +5330,33 @@ export default function App() {
                                     <Lock className="w-3.5 h-3.5" />
                                     <span className="text-[10px] uppercase tracking-wider">{decryptedContent}</span>
                                   </div>
-                                ) : (
-                                  <p className="break-all break-words whitespace-pre-wrap">{decryptedContent}</p>
-                                )}
+                                ) : (() => {
+                                  const hasShortId = decryptedContent.includes('[short_id:');
+                                  if (hasShortId) {
+                                    const match = decryptedContent.match(/\[short_id:([^\]]+)\]/);
+                                    const shortId = match ? match[1] : null;
+                                    const cleanText = decryptedContent.replace(/\[short_id:[^\]]+\]\n?/, '');
+                                    
+                                    return (
+                                      <div className="space-y-3">
+                                        <p className="break-all break-words whitespace-pre-wrap">{cleanText}</p>
+                                        {shortId && (
+                                          <button
+                                            onClick={() => {
+                                              setSocialDeepLinkShortId(shortId);
+                                              setIsSocialOpen(true);
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-pink-500/25 border border-pink-400/20 active:scale-95 transition-all cursor-pointer pointer-events-auto w-full justify-center"
+                                          >
+                                            <Play className="w-3.5 h-3.5 fill-white" />
+                                            Watch Shared Short
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  return <p className="break-all break-words whitespace-pre-wrap">{decryptedContent}</p>;
+                                })()}
                               </div>
                             )}
                             {msg.type === 'file' && msg.fileMetadata && (
@@ -5982,11 +6198,13 @@ export default function App() {
           {isSocialOpen && (
             <MemuerSocial 
               user={user} 
-              onClose={() => setIsSocialOpen(false)} 
+              onClose={() => { setIsSocialOpen(false); setSocialDeepLinkShortId(null); }} 
               currentTheme={currentTheme}
               themeName={themeName}
               contacts={contacts}
               db={db}
+              deepLinkShortId={socialDeepLinkShortId}
+              clearDeepLink={() => setSocialDeepLinkShortId(null)}
             />
           )}
         </AnimatePresence>
@@ -7522,6 +7740,38 @@ export default function App() {
                       </div>
                     </button>
 
+                    <button
+                      onClick={() => setAdminActiveTab('social')}
+                      className={cn(
+                        "flex items-center gap-3 transition-all rounded-xl py-2 px-3 sm:py-3.5 sm:px-4 text-left shrink-0",
+                        adminActiveTab === 'social' 
+                          ? "bg-amber-500/10 text-white font-bold shadow-lg border border-amber-500/20" 
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                      <div className="text-left">
+                        <p className="text-[10px] sm:text-xs font-black uppercase tracking-wider">Social+ Moderation</p>
+                        <p className="text-[8px] opacity-60 font-mono hidden md:block">Active Posts & m shorts</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setAdminActiveTab('audit')}
+                      className={cn(
+                        "flex items-center gap-3 transition-all rounded-xl py-2 px-3 sm:py-3.5 sm:px-4 text-left shrink-0",
+                        adminActiveTab === 'audit' 
+                          ? "bg-emerald-500/10 text-white font-bold shadow-lg border border-emerald-500/20" 
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <History className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <div className="text-left">
+                        <p className="text-[10px] sm:text-xs font-black uppercase tracking-wider">Moderation Log</p>
+                        <p className="text-[8px] opacity-60 font-mono hidden md:block">Removed items history ({adminAuditLogs.length})</p>
+                      </div>
+                    </button>
+
                     {isUserOwnerMe && (
                       <button
                         onClick={() => setAdminActiveTab('maintenance')}
@@ -7984,6 +8234,421 @@ export default function App() {
                                 </div>
                               );
                             })
+                          )}
+                        </div>
+                      </div>
+                    ) : adminActiveTab === 'social' ? (
+                      <div className="space-y-4 flex-1 flex flex-col overflow-hidden">
+                        {/* Section Header */}
+                        <div className="flex justify-between items-center bg-zinc-900 py-1 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert className="w-5 h-5 text-amber-500" />
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400 font-sans">
+                              Social+ Central Moderation Control
+                            </h3>
+                          </div>
+                          <span className="text-[9px] text-zinc-500 font-mono uppercase">
+                            Operational Integrity
+                          </span>
+                        </div>
+
+                        {/* Switch Subtabs */}
+                        <div className="flex gap-2 shrink-0 border-b border-white/5 pb-2">
+                          <button
+                            onClick={() => { setAdminSocialSubTab('posts'); setAdminSelectedContent(null); }}
+                            className={cn(
+                              "px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase cursor-pointer",
+                              adminSocialSubTab === 'posts'
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5"
+                            )}
+                          >
+                            Posts ({adminPosts.length})
+                          </button>
+                          <button
+                            onClick={() => { setAdminSocialSubTab('shorts'); setAdminSelectedContent(null); }}
+                            className={cn(
+                              "px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase cursor-pointer",
+                              adminSocialSubTab === 'shorts'
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5"
+                            )}
+                          >
+                            m shorts ({adminShorts.length})
+                          </button>
+                          <button
+                            onClick={() => { setAdminSocialSubTab('reports'); setAdminSelectedContent(null); }}
+                            className={cn(
+                              "px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase cursor-pointer flex items-center gap-1.5",
+                              adminSocialSubTab === 'reports'
+                                ? "bg-red-500/10 text-red-400 border border-red-500/30"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5"
+                            )}
+                          >
+                            User Reports ({adminReports.length})
+                            {adminReports.filter(r => r.status === 'pending').length > 0 && (
+                              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shrink-0" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Top 5 Most Engaged Content Visualization */}
+                        {adminSocialSubTab !== 'reports' && (() => {
+                          const combinedContent = [
+                            ...adminPosts.map(p => ({ ...p, type: 'post', engagement: (p.likes || 0) + ((p.comments || []).length * 2) })),
+                            ...adminShorts.map(s => ({ ...s, type: 'short', engagement: (s.likes || 0) * 1.5 + (s.commentsCount || 0) * 2 }))
+                          ];
+                          const topEngaged = [...combinedContent].sort((a, b) => b.engagement - a.engagement).slice(0, 5);
+                          const maxEngagement = topEngaged.length > 0 ? topEngaged[0].engagement : 1;
+                          if (topEngaged.length === 0) return null;
+                          return (
+                            <div className="bg-zinc-950/40 border border-white/5 rounded-2xl p-4 space-y-3 shrink-0">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-pink-500 flex items-center gap-1.5">
+                                  <Sparkles className="w-4 h-4 text-pink-400 animate-pulse" />
+                                  Viral Activity Tracker (Top 5 Most Engaged)
+                                </h4>
+                                <span className="text-[8px] text-zinc-500 font-mono">Formula: (Likes + Comments/Views weight)</span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                                {topEngaged.map((item, idx) => {
+                                  const percentage = Math.max(5, Math.min(100, (item.engagement / maxEngagement) * 100));
+                                  return (
+                                    <div key={item.id} className="bg-black/30 border border-white/5 rounded-xl p-2.5 space-y-2 flex flex-col justify-between hover:border-white/10 transition-all relative group overflow-hidden text-left">
+                                      <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 text-[10px] font-black border border-pink-500/30">
+                                        #{idx + 1}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black">
+                                          {item.type === 'short' ? (
+                                            <video src={item.videoUrl} className="w-full h-full object-cover" muted />
+                                          ) : (
+                                            <img src={item.image} className="w-full h-full object-cover" />
+                                          )}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="text-[10px] font-bold text-white truncate">@{item.username}</p>
+                                          <p className="text-[8px] uppercase tracking-wide text-zinc-400 font-mono">{item.type}</p>
+                                        </div>
+                                      </div>
+                                      <p className="text-[10px] text-zinc-400 line-clamp-1 italic">"{item.caption || 'No caption'}"</p>
+                                      <div className="space-y-1">
+                                        <div className="flex justify-between text-[8px] font-mono text-zinc-500">
+                                          <span>Engagement score</span>
+                                          <span className="text-pink-400 font-bold">{Math.round(item.engagement)}</span>
+                                        </div>
+                                        <div className="w-full bg-zinc-900 h-1 rounded-full overflow-hidden">
+                                          <div className="bg-gradient-to-r from-pink-500 to-amber-500 h-full" style={{ width: `${percentage}%` }} />
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setAdminSelectedContent({ type: item.type, id: item.id, username: item.username, userId: item.ownerId });
+                                          setAdminRemovalReason('');
+                                        }}
+                                        className="w-full py-1 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white transition-all text-[8px] font-black uppercase tracking-wider rounded-lg border border-rose-500/20 cursor-pointer"
+                                      >
+                                        Moderate
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Reason / Confirmation Drawer */}
+                        {adminSelectedContent && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 space-y-3 shrink-0"
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-black uppercase text-amber-400 tracking-wide flex items-center gap-1.5 font-bold">
+                                <AlertTriangle className="w-4 h-4 text-amber-500 animate-bounce" />
+                                Initiate Content Moderation Purge
+                              </span>
+                              <span className="text-[10px] font-mono text-zinc-400">
+                                Content ID: {adminSelectedContent.id}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                              You are about to remove a {adminSelectedContent.type === 'post' ? 'post' : 'm short'} published by <span className="text-white font-bold font-sans">@{adminSelectedContent.username}</span>. A secure notification will be transmitted to their DM.
+                            </p>
+                            
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input 
+                                type="text" 
+                                value={adminRemovalReason} 
+                                onChange={(e) => setAdminRemovalReason(e.target.value)} 
+                                placeholder="State reason for removal (e.g. Terms violation, inappropriate imagery)..." 
+                                className="flex-1 bg-zinc-950 border border-white/10 rounded-xl p-3 text-xs text-white outline-none focus:ring-1 focus:ring-amber-500 font-sans"
+                              />
+                              <div className="flex gap-2 justify-end sm:justify-start">
+                                <button 
+                                  onClick={() => handleAdminRemoveSocialContent(adminSelectedContent.type, adminSelectedContent.id, adminSelectedContent.username, adminSelectedContent.userId)} 
+                                  className="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white text-[10px] uppercase font-black tracking-wider rounded-xl cursor-pointer active:scale-95 transition-all font-bold"
+                                >
+                                  Execute Purge
+                                </button>
+                                <button 
+                                  onClick={() => { setAdminSelectedContent(null); setAdminRemovalReason(''); }} 
+                                  className="py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[10px] uppercase font-bold rounded-xl cursor-pointer active:scale-95 transition-all"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {/* Moderation Feed */}
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar pb-6">
+                          {adminSocialSubTab === 'posts' ? (
+                            adminPosts.length === 0 ? (
+                              <div className="h-48 border border-white/5 bg-black/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 space-y-2">
+                                <ShieldAlert className="w-8 h-8 text-zinc-600 animate-pulse" />
+                                <h4 className="text-sm font-bold text-zinc-400">No Social+ Posts Active</h4>
+                                <p className="text-xs text-zinc-500 max-w-sm">No posts are currently loaded in the directory databases.</p>
+                              </div>
+                            ) : (
+                              adminPosts.map((post) => (
+                                <div key={post.id} className="border border-white/5 bg-black/20 hover:bg-neutral-900/40 transition-all rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    {post.image && (
+                                      <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-zinc-950">
+                                        <img src={post.image} className="w-full h-full object-cover" />
+                                      </div>
+                                    )}
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-black text-pink-400 tracking-wide font-bold">@{post.username}</span>
+                                        {post.location && (
+                                          <span className="text-[9px] text-zinc-500 flex items-center gap-0.5">
+                                            <MapPin className="w-2.5 h-2.5" />
+                                            {post.location}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-zinc-300 font-sans line-clamp-2">{post.caption || "(No Caption)"}</p>
+                                      <p className="text-[9px] text-zinc-500 font-mono">ID: {post.id} • Views: {post.views || 0} • Likes: {post.likes || 0}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setAdminSelectedContent({ type: 'post', id: post.id, username: post.username, userId: post.ownerId });
+                                      setAdminRemovalReason('');
+                                    }}
+                                    className="py-1.5 px-3 bg-rose-500/10 border border-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all self-end sm:self-auto font-bold cursor-pointer"
+                                  >
+                                    Remove Post
+                                  </button>
+                                </div>
+                              ))
+                            )
+                          ) : adminSocialSubTab === 'shorts' ? (
+                            adminShorts.length === 0 ? (
+                              <div className="h-48 border border-white/5 bg-black/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 space-y-2">
+                                <Video className="w-8 h-8 text-zinc-600 animate-pulse" />
+                                <h4 className="text-sm font-bold text-zinc-400">No m shorts Active</h4>
+                                <p className="text-xs text-zinc-500 max-w-sm">No short-form video publications are currently loaded in the central directories.</p>
+                              </div>
+                            ) : (
+                              adminShorts.map((short) => (
+                                <div key={short.id} className="border border-white/5 bg-black/20 hover:bg-neutral-900/40 transition-all rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    {short.videoUrl && (
+                                      <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-zinc-950 flex items-center justify-center relative">
+                                        <video src={short.videoUrl} className="w-full h-full object-cover" muted playsInline />
+                                        <Play className="w-3 h-3 text-white absolute" />
+                                      </div>
+                                    )}
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-black text-amber-400 tracking-wide font-bold">@{short.username}</span>
+                                        <span className="text-[9px] text-zinc-500 font-mono">🎵 {short.musicTitle}</span>
+                                      </div>
+                                      <p className="text-xs text-zinc-300 font-sans line-clamp-2">{short.caption || "(No Caption)"}</p>
+                                      <p className="text-[9px] text-zinc-500 font-mono">ID: {short.id} • Likes: {short.likes || 0}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setAdminSelectedContent({ type: 'short', id: short.id, username: short.username, userId: short.ownerId });
+                                      setAdminRemovalReason('');
+                                    }}
+                                    className="py-1.5 px-3 bg-rose-500/10 border border-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all self-end sm:self-auto font-bold cursor-pointer"
+                                  >
+                                    Remove Short
+                                  </button>
+                                </div>
+                              ))
+                            )
+                          ) : (
+                            adminReports.length === 0 ? (
+                              <div className="h-48 border border-white/5 bg-black/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 space-y-2">
+                                <ShieldCheck className="w-8 h-8 text-emerald-500 animate-pulse" />
+                                <h4 className="text-sm font-bold text-zinc-400 font-sans">No Content Flags Pending</h4>
+                                <p className="text-xs text-zinc-500 max-w-sm font-sans">No pending user report tickets are currently loaded in the database archives.</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {adminReports.map((report) => (
+                                  <div key={report.id} className="border border-white/5 bg-black/20 hover:bg-neutral-900/40 transition-all rounded-2xl p-4 space-y-3 text-left">
+                                    <div className="flex justify-between items-start flex-wrap gap-2 border-b border-white/5 pb-2">
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-black text-white">Report #{report.id.slice(-6).toUpperCase()}</span>
+                                          <span className={cn(
+                                            "text-[8px] font-mono uppercase px-2 py-0.5 rounded-full border font-black tracking-widest",
+                                            report.status === 'pending'
+                                              ? "bg-red-500/20 border-red-500/30 text-red-400 animate-pulse"
+                                              : "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
+                                          )}>
+                                            {report.status}
+                                          </span>
+                                        </div>
+                                        <p className="text-[10px] text-zinc-400 font-sans">
+                                          Reporter: <span className="text-zinc-250 font-bold">@{report.reporterUsername || 'anonymous'}</span> ({report.reporterId?.slice(-6)})
+                                        </p>
+                                      </div>
+                                      <span className="text-[9px] text-zinc-500 font-mono">
+                                        {report.createdAt ? new Date(report.createdAt).toLocaleString() : 'Date unknown'}
+                                      </span>
+                                    </div>
+
+                                    {/* Reported reason */}
+                                    <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-3">
+                                      <span className="text-[8px] font-mono text-red-400 uppercase font-black tracking-widest block mb-1">STATED VIOLATION REASON:</span>
+                                      <p className="text-xs text-zinc-300 font-sans italic">"{report.reason}"</p>
+                                    </div>
+
+                                    {/* Target Content details */}
+                                    <div className="flex items-center gap-3 bg-white/5 border border-white/5 rounded-xl p-3">
+                                      <div className="w-12 h-16 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black flex items-center justify-center relative">
+                                        {report.itemType === 'short' ? (
+                                          <>
+                                            <video src={report.itemImage} className="w-full h-full object-cover" muted playsInline />
+                                            <Play className="w-3 h-3 text-white absolute" />
+                                          </>
+                                        ) : report.itemImage ? (
+                                          <img src={report.itemImage} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <ShieldAlert className="w-4 h-4 text-zinc-500" />
+                                        )}
+                                      </div>
+                                      <div className="space-y-0.5 min-w-0 flex-1">
+                                        <p className="text-xs font-black text-amber-400 truncate font-bold">@{report.itemUsername || 'unknown'}</p>
+                                        <p className="text-xs text-zinc-350 font-sans truncate">{report.itemCaption || '(No Caption)'}</p>
+                                        <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-wider">{report.itemType} • ID: {report.itemId}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Resolve / Moderation action buttons */}
+                                    {report.status === 'pending' && (
+                                      <div className="flex gap-2 justify-end pt-1">
+                                        <button
+                                          onClick={() => handleAdminResolveReport(report.id, 'dismissed')}
+                                          className="py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all font-bold cursor-pointer"
+                                        >
+                                          Dismiss Report
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setAdminSelectedContent({ type: report.itemType, id: report.itemId, username: report.itemUsername, userId: report.itemOwnerId });
+                                            setAdminRemovalReason(`User reported violation: ${report.reason}`);
+                                          }}
+                                          className="py-1.5 px-3 bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-black uppercase tracking-wider rounded-lg transition-all font-bold cursor-pointer"
+                                        >
+                                          Execute Purge
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {report.status === 'resolved' && (
+                                      <p className="text-[9px] text-zinc-500 font-mono italic text-right">
+                                        ✓ Purged by {report.resolvedBy || 'System'} on {report.resolvedAt ? new Date(report.resolvedAt).toLocaleString() : ''}
+                                      </p>
+                                    )}
+                                    {report.status === 'dismissed' && (
+                                      <p className="text-[9px] text-zinc-500 font-mono italic text-right">
+                                        ✗ Dismissed by {report.resolvedBy || 'System'} on {report.resolvedAt ? new Date(report.resolvedAt).toLocaleString() : ''}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    ) : adminActiveTab === 'audit' ? (
+                      <div className="space-y-4 flex-1 flex flex-col overflow-hidden">
+                        {/* Section Header */}
+                        <div className="flex justify-between items-center bg-zinc-900 py-1 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <History className="w-5 h-5 text-emerald-500" />
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-400 font-sans">
+                              Social+ Moderation Audit Archive
+                            </h3>
+                          </div>
+                          <span className="text-[9px] text-zinc-500 font-mono uppercase">
+                            Permanent Registry
+                          </span>
+                        </div>
+
+                        {/* Audit Feed */}
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar pb-6">
+                          {adminAuditLogs.length === 0 ? (
+                            <div className="h-48 border border-white/5 bg-black/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 space-y-2">
+                              <History className="w-8 h-8 text-zinc-600 animate-pulse" />
+                              <h4 className="text-sm font-bold text-zinc-400">Moderation Audit Log is Empty</h4>
+                              <p className="text-xs text-zinc-500 max-w-sm">No purge operations or social content moderation actions have been recorded yet.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {adminAuditLogs.map((log) => (
+                                <div key={log.id} className="border border-white/5 bg-zinc-950/40 rounded-2xl p-4 space-y-3 text-left font-sans">
+                                  <div className="flex justify-between items-start flex-wrap gap-2 border-b border-white/5 pb-2">
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-mono font-black text-emerald-400">PURGE_EVENT #{log.id.slice(-6).toUpperCase()}</span>
+                                        <span className="text-[8px] font-mono bg-rose-950/35 text-rose-300 px-1.5 py-0.5 rounded border border-rose-500/20 uppercase font-black">
+                                          {log.itemType} deleted
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-zinc-450">
+                                        Moderator: <span className="text-white font-bold">@{log.moderatorUsername}</span> ({log.moderatorId?.slice(-6) || 'system'})
+                                      </p>
+                                    </div>
+                                    <span className="text-[9px] text-zinc-500 font-mono">
+                                      {log.createdAt ? new Date(log.createdAt).toLocaleString() : 'Date unknown'}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="bg-white/5 border border-white/5 rounded-xl p-3 space-y-1">
+                                      <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-wider block">TARGET ITEM INFO:</span>
+                                      <p className="text-xs text-zinc-350">
+                                        Author: <span className="text-amber-400 font-bold">@{log.creatorUsername}</span>
+                                      </p>
+                                      <p className="text-[9px] text-zinc-500 font-mono">
+                                        Item ID: {log.itemId}
+                                      </p>
+                                    </div>
+
+                                    <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl p-3 space-y-1">
+                                      <span className="text-[8px] font-mono text-rose-400 uppercase tracking-wider block">STATED AUDIT REASON:</span>
+                                      <p className="text-xs text-zinc-300 font-sans italic">
+                                        "{log.reason}"
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>

@@ -11,6 +11,7 @@ import {
   collection, doc, getDoc, setDoc, addDoc, updateDoc, onSnapshot, query, orderBy, limit, deleteDoc
 } from 'firebase/firestore';
 import { isDefaultSandbox } from '../lib/firebase';
+import { createClient } from '@supabase/supabase-js';
 import { 
   encryptMessage, getStoredKeyPair, generateKeyPair, storeKeyPair 
 } from '../lib/crypto';
@@ -328,15 +329,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
     }
   };
 
-  // SHA-1 helper function for Cloudinary signatures using native browser subtle crypto
-  const sha1 = async (str: string): Promise<string> => {
-    const utf8 = new TextEncoder().encode(str);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', utf8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((bytes) => bytes.toString(16).padStart(2, '0')).join('');
-  };
-
-  // Dynamic media upload handler supporting ImgBB for images and Cloudinary for videos with robust fallbacks
+  // Dynamic media upload handler supporting ImgBB for images and Supabase Storage for videos with robust fallbacks
   const uploadFileInChunks = async (file: File, onProgress?: (pct: number) => void): Promise<string> => {
     const meta = import.meta as any;
     const isImage = file.type.startsWith("image/") || /\.(png|jpg|jpeg|webp)$/i.test(file.name);
@@ -398,90 +391,42 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
       });
 
     } else if (isVideo) {
-      console.log("Initiating Cloudinary upload for video:", file.name);
-      const cloudName = meta.env?.VITE_CLOUDINARY_CLOUD_NAME;
-      const apiKey = meta.env?.VITE_CLOUDINARY_API_KEY;
-      const apiSecret = meta.env?.VITE_CLOUDINARY_API_SECRET;
-      const uploadPreset = meta.env?.VITE_CLOUDINARY_UPLOAD_PRESET;
+      console.log("Initiating Supabase Storage upload for video:", file.name);
+      const supabaseUrl = meta.env?.VITE_SUPABASE_URL;
+      const supabaseAnonKey = meta.env?.VITE_SUPABASE_ANON_KEY;
 
-      if (!cloudName) {
-        console.warn("Cloudinary Cloud Name is not configured! Using local ObjectURL fallback.");
-        if (onProgress) onProgress(100);
-        return URL.createObjectURL(file);
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error("Supabase is not configured! Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.");
       }
 
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("resource_type", "video");
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      const uniquePath = `${Date.now()}_${file.name}`;
 
-      // Check if we should do a signed upload or unsigned upload
-      if (apiKey && apiSecret) {
-        const timestamp = Math.round(new Date().getTime() / 1000).toString();
-        const paramsToSign: Record<string, string> = {
-          timestamp: timestamp
-        };
-        if (uploadPreset) {
-          paramsToSign["upload_preset"] = uploadPreset;
+      if (onProgress) onProgress(20);
+
+      try {
+        const { data, error } = await supabase.storage
+          .from('videos')
+          .upload(uniquePath, file);
+
+        if (error) {
+          throw error;
         }
 
-        // Generate dynamic alphabetical signature
-        const sortedKeys = Object.keys(paramsToSign).sort();
-        const signatureString = sortedKeys.map(key => `${key}=${paramsToSign[key]}`).join('&') + apiSecret;
-        const signature = await sha1(signatureString);
+        if (onProgress) onProgress(80);
 
-        formData.append("api_key", apiKey);
-        formData.append("timestamp", timestamp);
-        formData.append("signature", signature);
-        if (uploadPreset) {
-          formData.append("upload_preset", uploadPreset);
+        const publicUrlResult = supabase.storage.from('videos').getPublicUrl(data.path);
+        const publicUrl = publicUrlResult?.data?.publicUrl;
+        if (!publicUrl) {
+          throw new Error("Could not retrieve a valid public URL for the uploaded video.");
         }
-      } else if (uploadPreset) {
-        // Unsigned upload fallback using the preset
-        formData.append("upload_preset", uploadPreset);
-      } else {
-        console.warn("Cloudinary requires either (API Key + Secret) or an Upload Preset! Using local ObjectURL fallback.");
+
         if (onProgress) onProgress(100);
-        return URL.createObjectURL(file);
+        return publicUrl;
+      } catch (err: any) {
+        console.error("Supabase video upload failed:", err);
+        throw err;
       }
-
-      return new Promise<string>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`);
-
-        if (xhr.upload && onProgress) {
-          xhr.upload.addEventListener("progress", (event) => {
-            if (event.lengthComputable) {
-              const pct = Math.round((event.loaded / event.total) * 100);
-              onProgress(pct);
-            }
-          });
-        }
-
-        xhr.onload = () => {
-          try {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              const res = JSON.parse(xhr.responseText);
-              if (res && res.secure_url) {
-                console.log("Cloudinary video upload succeeded:", res.secure_url);
-                resolve(res.secure_url);
-              } else if (res && res.url) {
-                console.log("Cloudinary video upload succeeded:", res.url);
-                resolve(res.url);
-              } else {
-                reject(new Error("Cloudinary did not return a valid direct video URL."));
-              }
-            } else {
-              const errRes = JSON.parse(xhr.responseText || "{}");
-              reject(new Error(errRes?.error?.message || `Cloudinary returned status ${xhr.status}`));
-            }
-          } catch (e: any) {
-            reject(new Error(`Failed to parse Cloudinary response: ${e.message}`));
-          }
-        };
-
-        xhr.onerror = () => reject(new Error("Cloudinary network error."));
-        xhr.send(formData);
-      });
 
     } else {
       console.warn("Unsupported file type for dual-upload. Falling back to local ObjectURL.");
@@ -543,9 +488,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
     } catch (err: any) {
       console.error("Video upload error:", err);
       setUploadError(err.message || "Failed to upload video to server.");
-      // Fallback: use an object URL
-      const fallbackUrl = URL.createObjectURL(file);
-      setVideoUrlInput(fallbackUrl);
+      // Strictly do not fall back to local blob URL to avoid publishing broken links
       setSelectedVideoTemplate(-1);
     } finally {
       setUploading(false);

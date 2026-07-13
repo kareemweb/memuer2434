@@ -26,6 +26,7 @@ import { useWorldCup } from './context/WorldCupContext';
 import { EgyptFootballGame } from './components/EgyptFootballGame';
 import { WorldCupMatchTracker } from './components/WorldCupMatchTracker';
 import { MemuerSocial } from './components/MemuerSocial';
+import { createClient } from '@supabase/supabase-js';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -2942,71 +2943,37 @@ export default function App() {
     }
   };
 
-  const sha1App = async (str: string): Promise<string> => {
-    const utf8 = new TextEncoder().encode(str);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', utf8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((bytes) => bytes.toString(16).padStart(2, '0')).join('');
-  };
-
-  const uploadVideoToCloudinary = async (file: File): Promise<string> => {
+  const uploadVideoToSupabase = async (file: File): Promise<string> => {
     const meta = import.meta as any;
-    const cloudName = meta.env?.VITE_CLOUDINARY_CLOUD_NAME;
-    const apiKey = meta.env?.VITE_CLOUDINARY_API_KEY;
-    const apiSecret = meta.env?.VITE_CLOUDINARY_API_SECRET;
-    const uploadPreset = meta.env?.VITE_CLOUDINARY_UPLOAD_PRESET;
+    const supabaseUrl = meta.env?.VITE_SUPABASE_URL;
+    const supabaseAnonKey = meta.env?.VITE_SUPABASE_ANON_KEY;
 
-    if (!cloudName) {
-      throw new Error("VITE_CLOUDINARY_CLOUD_NAME is not configured.");
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Supabase is not configured. VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required.");
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("resource_type", "video");
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const uniquePath = `${Date.now()}_${file.name}`;
 
-    if (apiKey && apiSecret) {
-      const timestamp = Math.round(new Date().getTime() / 1000).toString();
-      const paramsToSign: Record<string, string> = {
-        timestamp: timestamp
-      };
-      if (uploadPreset) {
-        paramsToSign["upload_preset"] = uploadPreset;
-      }
+    const { data, error } = await supabase.storage
+      .from('videos')
+      .upload(uniquePath, file);
 
-      const sortedKeys = Object.keys(paramsToSign).sort();
-      const signatureString = sortedKeys.map(key => `${key}=${paramsToSign[key]}`).join('&') + apiSecret;
-      const signature = await sha1App(signatureString);
-
-      formData.append("api_key", apiKey);
-      formData.append("timestamp", timestamp);
-      formData.append("signature", signature);
-      if (uploadPreset) {
-        formData.append("upload_preset", uploadPreset);
-      }
-    } else if (uploadPreset) {
-      formData.append("upload_preset", uploadPreset);
-    } else {
-      throw new Error("Cloudinary requires VITE_CLOUDINARY_UPLOAD_PRESET or VITE_CLOUDINARY_API_KEY + VITE_CLOUDINARY_API_SECRET.");
+    if (error) {
+      throw error;
     }
 
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData?.error?.message || `Cloudinary API returned status ${response.status}`);
+    if (!data) {
+      throw new Error("Supabase storage upload completed but returned no data.");
     }
 
-    const data = await response.json();
-    if (data && data.secure_url) {
-      return data.secure_url;
-    } else if (data && data.url) {
-      return data.url;
-    } else {
-      throw new Error("Cloudinary did not return a valid direct video URL.");
+    const publicUrlResult = supabase.storage.from('videos').getPublicUrl(data.path);
+    const publicUrl = publicUrlResult?.data?.publicUrl;
+    if (!publicUrl) {
+      throw new Error("Could not retrieve a valid public URL for the uploaded video.");
     }
+
+    return publicUrl;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3029,15 +2996,15 @@ export default function App() {
       let fileData = "";
 
       if (isVideoFile) {
-        // Strict Cloudinary upload routing for videos
+        // Strict Supabase upload routing for videos
         try {
-          console.log("Initiating Cloudinary upload for chat video:", file.name);
-          const cloudinaryUrl = await uploadVideoToCloudinary(file);
-          console.log("Uploaded successfully via Cloudinary:", cloudinaryUrl);
-          url = cloudinaryUrl;
-        } catch (cloudinaryErr: any) {
-          console.error("Cloudinary video upload failed:", cloudinaryErr);
-          throw new Error(`Cloudinary video upload failed: ${cloudinaryErr.message || cloudinaryErr}`);
+          console.log("Initiating Supabase Storage upload for chat video:", file.name);
+          const supabaseUrl = await uploadVideoToSupabase(file);
+          console.log("Uploaded successfully via Supabase Storage:", supabaseUrl);
+          url = supabaseUrl;
+        } catch (supabaseErr: any) {
+          console.error("Supabase video upload failed:", supabaseErr);
+          throw new Error(`Supabase video upload failed: ${supabaseErr.message || supabaseErr}`);
         }
       } else {
         // 1. Try ImgBB if it's an image and key is configured

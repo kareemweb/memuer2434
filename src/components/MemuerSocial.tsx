@@ -370,9 +370,49 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
       console.log("Cloud Storage upload succeeded: ", url);
       return url;
     } catch (storageErr) {
-      console.warn("Firebase Cloud Storage upload failed, attempting chunked server endpoint upload as fallback...", storageErr);
+      console.warn("Firebase Cloud Storage upload failed, trying direct local proxy upload...", storageErr);
     }
 
+    // 2. Try our high-speed, local server media proxy (single payload POST) which is extremely reliable and robust
+    try {
+      console.log("Initiating local proxy single payload upload for: ", file.name);
+      if (onProgress) onProgress(10);
+      
+      // Convert file to base64
+      const fileData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+      });
+      
+      if (onProgress) onProgress(40);
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          fileData,
+          mimeType: file.type
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.url) {
+          console.log("Successfully uploaded to local container via single POST proxy: ", data.url);
+          if (onProgress) onProgress(100);
+          return data.url;
+        }
+      }
+      console.warn(`Local single POST proxy failed with status ${response.status}, trying chunked upload fallback...`);
+    } catch (proxyError) {
+      console.warn("Local single POST proxy upload failed, attempting chunked upload fallback...", proxyError);
+    }
+
+    // 3. Fallback to chunked upload if the file is extremely large
     const chunkSize = 1024 * 512; // 512KB chunks
     const totalChunks = Math.ceil(file.size / chunkSize);
     const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

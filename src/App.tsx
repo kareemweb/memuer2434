@@ -2808,6 +2808,112 @@ export default function App() {
     );
   }
 
+  const compressImageForDirectSync = (file: File): Promise<string> => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+          
+          // Maintain aspect ratio with max dimension 1000px for conservative size
+          const MAX_DIM = 1000;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Compress to 0.65 quality JPG for an extremely lightweight payload (< 300KB usually)
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
+            resolve(dataUrl);
+          } else {
+            resolve(event.target?.result as string);
+          }
+        };
+        img.onerror = () => {
+          resolve(event.target?.result as string);
+        };
+      };
+      reader.onerror = (readErr) => reject(readErr);
+    });
+  };
+
+  const uploadInChunksWithRetries = async (file: File, maxRetries = 3): Promise<string> => {
+    const chunkSize = 1024 * 512; // 512KB chunks
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    for (let index = 0; index < totalChunks; index++) {
+      const start = index * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunkBlob = file.slice(start, end);
+
+      const chunkData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(chunkBlob);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+      });
+
+      let attempt = 0;
+      let success = false;
+      let resData: any = null;
+
+      while (attempt < maxRetries && !success) {
+        try {
+          const response = await fetch("/api/upload/chunk", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              uploadId,
+              chunkIndex: index,
+              totalChunks,
+              chunkData,
+              filename: file.name
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Status ${response.status}`);
+          }
+
+          resData = await response.json();
+          success = true;
+        } catch (err) {
+          attempt++;
+          console.warn(`Chunk ${index + 1}/${totalChunks} upload attempt ${attempt} failed:`, err);
+          if (attempt >= maxRetries) {
+            throw new Error(`Chunk upload ${index + 1}/${totalChunks} failed after ${maxRetries} attempts.`);
+          }
+          // Exponential backoff
+          await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 500));
+        }
+      }
+
+      if (resData?.completed && resData?.url) {
+        return resData.url;
+      }
+    }
+
+    throw new Error("Upload succeeded but no completed file URL was returned.");
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeChat || !user) return;
@@ -2819,32 +2925,51 @@ export default function App() {
       // Convert file into base64 payload first
       const fileData = await fileToBase64(file);
 
-      // 1. Try our high-speed, local server media proxy first
+      // 1. Try modern, highly-resilient chunked upload with retries first
       try {
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            filename: file.name,
-            fileData,
-            mimeType: file.type
-          })
-        });
+        console.log("Initiating robust chunked upload for: ", file.name);
+        url = await uploadInChunksWithRetries(file, 3);
+        console.log("Successfully uploaded via chunked retry engine: ", url);
+      } catch (chunkError) {
+        console.warn("Chunked upload pipeline failed, attempting single payload endpoint fallback...", chunkError);
+        
+        // 1b. Fallback: single POST to /api/upload with retry loop
+        let singleAttempt = 0;
+        const maxSingleAttempts = 3;
+        while (singleAttempt < maxSingleAttempts && !url) {
+          try {
+            const response = await fetch("/api/upload", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                filename: file.name,
+                fileData,
+                mimeType: file.type
+              })
+            });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.url) {
-            url = data.url;
-            console.log("Successfully uploaded to local container: ", url);
+            if (response.ok) {
+              const data = await response.json();
+              if (data && data.url) {
+                url = data.url;
+                console.log("Successfully uploaded to local container via single POST: ", url);
+              }
+            } else {
+              throw new Error(`Status ${response.status}`);
+            }
+          } catch (singleErr) {
+            singleAttempt++;
+            console.warn(`Single POST upload attempt ${singleAttempt} failed:`, singleErr);
+            if (singleAttempt < maxSingleAttempts) {
+              await new Promise((r) => setTimeout(r, singleAttempt * 1000));
+            }
           }
         }
-      } catch (proxyError) {
-        console.warn("Express upload API failed, falling back to other layers...", proxyError);
       }
 
-      // 2. Fall back to Firebase Storage if server upload is unconfigured/unavailable
+      // 2. Fall back to Firebase Storage if server upload is unconfigured/unavailable/404
       if (!url) {
         try {
           const storagePath = `chats/${activeChat.id}/${Date.now()}_${file.name}`;
@@ -2859,15 +2984,32 @@ export default function App() {
 
       // 3. Last resort local / Firestore binary payload fallback (so it NEVER fails)
       if (!url) {
-        // If file is under 1MB, we can store it directly in Firestore as the Base64 data URL
-        if (file.size < 950 * 1024) {
-          url = fileData;
+        // If it is an image, we can adaptively compress it so it ALWAYS fits in the 1MB Firestore document limit
+        if (file.type.startsWith("image/")) {
+          try {
+            console.log("Compressing image client-side to fit within direct-sync Firestore size constraints...");
+            url = await compressImageForDirectSync(file);
+          } catch (compressErr) {
+            console.warn("Image compression failed, using raw base64 data:", compressErr);
+            if (file.size < 950 * 1024) {
+              url = fileData;
+            } else {
+              url = URL.createObjectURL(file);
+              setErrorMessage("File exceeds 1MB limit for direct-sync. Storing local preview in active session.");
+              setTimeout(() => setErrorMessage(null), 5000);
+            }
+          }
         } else {
-          // If the file is too large for Firestore limit, use standard object URL
-          // This keeps the file accessible in their current dashboard session safely.
-          url = URL.createObjectURL(file);
-          setErrorMessage("File exceeds 1MB limit for encrypted direct-sync. Storing local preview in active session.");
-          setTimeout(() => setErrorMessage(null), 5000);
+          // If file is under 1.5MB, we can store it directly in Firestore as the Base64 data URL
+          if (file.size < 1.5 * 1024 * 1024) {
+            url = fileData;
+          } else {
+            // If the file is too large for Firestore limit, use standard object URL
+            // This keeps the file accessible in their current dashboard session safely.
+            url = URL.createObjectURL(file);
+            setErrorMessage("File exceeds size limit for direct-sync. Storing local preview in active session.");
+            setTimeout(() => setErrorMessage(null), 5000);
+          }
         }
       }
 
@@ -3716,12 +3858,17 @@ export default function App() {
 
       // 3. Last resort local base64 fallback
       if (!photoURL) {
-        if (file.size < 950 * 1024) {
-          photoURL = fileData;
-        } else {
-          setErrorMessage("Image file exceeds 1MB limit for E2EE Direct Sync.");
-          setTimeout(() => setErrorMessage(null), 3000);
-          return;
+        try {
+          console.log("Compressing profile photo client-side to fit direct-sync size limit...");
+          photoURL = await compressImageForDirectSync(file);
+        } catch (compressErr) {
+          if (file.size < 950 * 1024) {
+            photoURL = fileData;
+          } else {
+            setErrorMessage("Image file exceeds 1MB limit for E2EE Direct Sync.");
+            setTimeout(() => setErrorMessage(null), 3000);
+            return;
+          }
         }
       }
 
@@ -3796,12 +3943,17 @@ export default function App() {
 
       // 3. Last resort local base64 fallback
       if (!bgURL) {
-        if (file.size < 950 * 1024) {
-          bgURL = fileData;
-        } else {
-          setErrorMessage("Image file exceeds 1MB limit for custom E2EE Local Sync.");
-          setTimeout(() => setErrorMessage(null), 3000);
-          return;
+        try {
+          console.log("Compressing wallpaper image client-side to fit direct-sync size limit...");
+          bgURL = await compressImageForDirectSync(file);
+        } catch (compressErr) {
+          if (file.size < 950 * 1024) {
+            bgURL = fileData;
+          } else {
+            setErrorMessage("Image file exceeds 1MB limit for custom E2EE Local Sync.");
+            setTimeout(() => setErrorMessage(null), 3000);
+            return;
+          }
         }
       }
 

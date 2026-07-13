@@ -404,6 +404,7 @@ export default function App() {
   const [selectedForGroup, setSelectedForGroup] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState<{ name: string; url: string; size: number; isVideo: boolean } | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isAddConnectionModalOpen, setIsAddConnectionModalOpen] = useState(false);
@@ -2941,102 +2942,192 @@ export default function App() {
     }
   };
 
+  const sha1App = async (str: string): Promise<string> => {
+    const utf8 = new TextEncoder().encode(str);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', utf8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((bytes) => bytes.toString(16).padStart(2, '0')).join('');
+  };
+
+  const uploadVideoToCloudinary = async (file: File): Promise<string> => {
+    const meta = import.meta as any;
+    const cloudName = meta.env?.VITE_CLOUDINARY_CLOUD_NAME;
+    const apiKey = meta.env?.VITE_CLOUDINARY_API_KEY;
+    const apiSecret = meta.env?.VITE_CLOUDINARY_API_SECRET;
+    const uploadPreset = meta.env?.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName) {
+      throw new Error("VITE_CLOUDINARY_CLOUD_NAME is not configured.");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("resource_type", "video");
+
+    if (apiKey && apiSecret) {
+      const timestamp = Math.round(new Date().getTime() / 1000).toString();
+      const paramsToSign: Record<string, string> = {
+        timestamp: timestamp
+      };
+      if (uploadPreset) {
+        paramsToSign["upload_preset"] = uploadPreset;
+      }
+
+      const sortedKeys = Object.keys(paramsToSign).sort();
+      const signatureString = sortedKeys.map(key => `${key}=${paramsToSign[key]}`).join('&') + apiSecret;
+      const signature = await sha1App(signatureString);
+
+      formData.append("api_key", apiKey);
+      formData.append("timestamp", timestamp);
+      formData.append("signature", signature);
+      if (uploadPreset) {
+        formData.append("upload_preset", uploadPreset);
+      }
+    } else if (uploadPreset) {
+      formData.append("upload_preset", uploadPreset);
+    } else {
+      throw new Error("Cloudinary requires VITE_CLOUDINARY_UPLOAD_PRESET or VITE_CLOUDINARY_API_KEY + VITE_CLOUDINARY_API_SECRET.");
+    }
+
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData?.error?.message || `Cloudinary API returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data && data.secure_url) {
+      return data.secure_url;
+    } else if (data && data.url) {
+      return data.url;
+    } else {
+      throw new Error("Cloudinary did not return a valid direct video URL.");
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeChat || !user) return;
 
+    const isVideoFile = file.type.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(file.name);
+    const tempUrl = URL.createObjectURL(file);
+
     try {
       setUploading(true);
+      setUploadPreview({
+        name: file.name,
+        url: tempUrl,
+        size: file.size,
+        isVideo: isVideoFile
+      });
+
       let url = "";
       let fileData = "";
 
-      // 1. Try ImgBB if it's an image and key is configured
-      if (file.type.startsWith("image/")) {
+      if (isVideoFile) {
+        // Strict Cloudinary upload routing for videos
         try {
-          console.log("Initiating ImgBB upload for chat image:", file.name);
-          url = await uploadImageToImgBB(file);
-          console.log("Uploaded successfully via ImgBB:", url);
-        } catch (imgbbErr) {
-          console.warn("ImgBB upload failed, falling back to local server:", imgbbErr);
+          console.log("Initiating Cloudinary upload for chat video:", file.name);
+          const cloudinaryUrl = await uploadVideoToCloudinary(file);
+          console.log("Uploaded successfully via Cloudinary:", cloudinaryUrl);
+          url = cloudinaryUrl;
+        } catch (cloudinaryErr: any) {
+          console.error("Cloudinary video upload failed:", cloudinaryErr);
+          throw new Error(`Cloudinary video upload failed: ${cloudinaryErr.message || cloudinaryErr}`);
         }
-      }
-
-      // 2. If not uploaded yet, use local chunked server upload
-      if (!url) {
-        try {
-          console.log("Initiating robust chunked upload for: ", file.name);
-          url = await uploadInChunksWithRetries(file, 3);
-          console.log("Successfully uploaded via chunked retry engine: ", url);
-        } catch (chunkError) {
-          console.warn("Chunked upload pipeline failed, attempting single payload endpoint fallback...", chunkError);
-          
-          fileData = await fileToBase64(file);
-          let singleAttempt = 0;
-          const maxSingleAttempts = 3;
-          while (singleAttempt < maxSingleAttempts && !url) {
-            try {
-              const response = await fetch("/api/upload", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                  filename: file.name,
-                  fileData,
-                  mimeType: file.type
-                })
-              });
-
-              if (response.ok) {
-                const data = await response.json();
-                if (data && data.url) {
-                  url = data.url;
-                  console.log("Successfully uploaded to local container via single POST: ", url);
-                }
-              } else {
-                throw new Error(`Status ${response.status}`);
-              }
-            } catch (singleErr) {
-              singleAttempt++;
-              console.warn(`Single POST upload attempt ${singleAttempt} failed:`, singleErr);
-              if (singleAttempt < maxSingleAttempts) {
-                await new Promise((r) => setTimeout(r, singleAttempt * 1000));
-              }
-            }
-          }
-        }
-      }
-
-      // 3. Last resort local / Firestore binary payload fallback (so it NEVER fails)
-      if (!url) {
-        if (!fileData) {
-          fileData = await fileToBase64(file);
-        }
-        // If it is an image, we can adaptively compress it so it ALWAYS fits in the 1MB Firestore document limit
+      } else {
+        // 1. Try ImgBB if it's an image and key is configured
         if (file.type.startsWith("image/")) {
           try {
-            console.log("Compressing image client-side to fit within direct-sync Firestore size constraints...");
-            url = await compressImageForDirectSync(file);
-          } catch (compressErr) {
-            console.warn("Image compression failed, using raw base64 data:", compressErr);
-            if (file.size < 950 * 1024) {
-              url = fileData;
-            } else {
-              url = URL.createObjectURL(file);
-              setErrorMessage("File exceeds 1MB limit for direct-sync. Storing local preview in active session.");
-              setTimeout(() => setErrorMessage(null), 5000);
+            console.log("Initiating ImgBB upload for chat image:", file.name);
+            url = await uploadImageToImgBB(file);
+            console.log("Uploaded successfully via ImgBB:", url);
+          } catch (imgbbErr) {
+            console.warn("ImgBB upload failed, falling back to local server:", imgbbErr);
+          }
+        }
+
+        // 2. If not uploaded yet, use local chunked server upload
+        if (!url) {
+          try {
+            console.log("Initiating robust chunked upload for: ", file.name);
+            url = await uploadInChunksWithRetries(file, 3);
+            console.log("Successfully uploaded via chunked retry engine: ", url);
+          } catch (chunkError) {
+            console.warn("Chunked upload pipeline failed, attempting single payload endpoint fallback...", chunkError);
+            
+            fileData = await fileToBase64(file);
+            let singleAttempt = 0;
+            const maxSingleAttempts = 3;
+            while (singleAttempt < maxSingleAttempts && !url) {
+              try {
+                const response = await fetch("/api/upload", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({
+                    filename: file.name,
+                    fileData,
+                    mimeType: file.type
+                  })
+                });
+
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data && data.url) {
+                    url = data.url;
+                    console.log("Successfully uploaded to local container via single POST: ", url);
+                  }
+                } else {
+                  throw new Error(`Status ${response.status}`);
+                }
+              } catch (singleErr) {
+                singleAttempt++;
+                console.warn(`Single POST upload attempt ${singleAttempt} failed:`, singleErr);
+                if (singleAttempt < maxSingleAttempts) {
+                  await new Promise((r) => setTimeout(r, singleAttempt * 1000));
+                }
+              }
             }
           }
-        } else {
-          // If file is under 1.5MB, we can store it directly in Firestore as the Base64 data URL
-          if (file.size < 1.5 * 1024 * 1024) {
-            url = fileData;
+        }
+
+        // 3. Last resort local / Firestore binary payload fallback (so it NEVER fails)
+        if (!url) {
+          if (!fileData) {
+            fileData = await fileToBase64(file);
+          }
+          // If it is an image, we can adaptively compress it so it ALWAYS fits in the 1MB Firestore document limit
+          if (file.type.startsWith("image/")) {
+            try {
+              console.log("Compressing image client-side to fit within direct-sync Firestore size constraints...");
+              url = await compressImageForDirectSync(file);
+            } catch (compressErr) {
+              console.warn("Image compression failed, using raw base64 data:", compressErr);
+              if (file.size < 950 * 1024) {
+                url = fileData;
+              } else {
+                url = URL.createObjectURL(file);
+                setErrorMessage("File exceeds 1MB limit for direct-sync. Storing local preview in active session.");
+                setTimeout(() => setErrorMessage(null), 5000);
+              }
+            }
           } else {
-            // If the file is too large for Firestore limit, use standard object URL
-            // This keeps the file accessible in their current dashboard session safely.
-            url = URL.createObjectURL(file);
-            setErrorMessage("File exceeds size limit for direct-sync. Storing local preview in active session.");
-            setTimeout(() => setErrorMessage(null), 5000);
+            // If file is under 1.5MB, we can store it directly in Firestore as the Base64 data URL
+            if (file.size < 1.5 * 1024 * 1024) {
+              url = fileData;
+            } else {
+              // If the file is too large for Firestore limit, use standard object URL
+              // This keeps the file accessible in their current dashboard session safely.
+              url = URL.createObjectURL(file);
+              setErrorMessage("File exceeds size limit for direct-sync. Storing local preview in active session.");
+              setTimeout(() => setErrorMessage(null), 5000);
+            }
           }
         }
       }
@@ -3078,7 +3169,7 @@ export default function App() {
               name: file.name,
               size: file.size,
               mimeType: file.type,
-              storagePath: url // Simplified: using direct URL for accessibility in this demo
+              storagePath: url // Direct secure URL (never a blob: for video!)
             },
             createdAt: new Date().toISOString()
           });
@@ -3091,10 +3182,16 @@ export default function App() {
           handleFirestoreError(error, OperationType.WRITE, `chats/${activeChat.id}/messages`);
         }
       }
+
+      // Cleanup preview state
+      URL.revokeObjectURL(tempUrl);
+      setUploadPreview(null);
     } catch (err: any) {
       console.error("Upload failed entirely:", err);
       setErrorMessage(`Upload failed: ${err.message || err}`);
-      setTimeout(() => setErrorMessage(null), 3000);
+      setTimeout(() => setErrorMessage(null), 5000);
+      URL.revokeObjectURL(tempUrl);
+      setUploadPreview(null);
     } finally {
       setUploading(false);
     }
@@ -5772,6 +5869,48 @@ export default function App() {
                             <span className="font-extrabold text-cyan-200">@memuer</span>
                             <span className="text-[10px] text-indigo-300 ml-2">App AI Assistant</span>
                           </div>
+                        </button>
+                      </div>
+                    )}
+
+                    {uploadPreview && (
+                      <div className="p-3 bg-slate-950/80 backdrop-blur-md border border-cyan-500/30 rounded-2xl flex items-center justify-between gap-3 mb-2.5 animate-fadeIn">
+                        <div className="flex items-center gap-3 overflow-hidden flex-1">
+                          {uploadPreview.isVideo ? (
+                            <div className="w-12 h-12 rounded-xl bg-black border border-white/10 overflow-hidden relative flex-shrink-0 flex items-center justify-center">
+                              <video src={uploadPreview.url} className="w-full h-full object-cover" muted />
+                              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                <span className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 overflow-hidden relative flex-shrink-0">
+                              <img src={uploadPreview.url} className="w-full h-full object-cover" alt="preview" referrerPolicy="no-referrer" />
+                              <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                                <span className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-white uppercase tracking-wider truncate">{uploadPreview.name}</p>
+                            <p className="text-[10px] text-cyan-400 font-bold mt-0.5">
+                              {uploading ? `Uploading secure packet (${(uploadPreview.size / (1024 * 1024)).toFixed(2)} MB)...` : "Prepared to send"}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (uploadPreview.url.startsWith('blob:')) {
+                              URL.revokeObjectURL(uploadPreview.url);
+                            }
+                            setUploadPreview(null);
+                            setUploading(false);
+                          }}
+                          className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-red-400 flex items-center justify-center transition-colors cursor-pointer border border-white/5"
+                          title="Cancel upload"
+                        >
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
                     )}

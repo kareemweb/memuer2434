@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { useAuth } from './hooks/useAuth';
 import { usePeer } from './hooks/usePeer';
-import { db, auth, storage, handleFirestoreError, OperationType } from './lib/firebase';
+import { db, auth, handleFirestoreError, OperationType, isDefaultSandbox } from './lib/firebase';
 import { 
   collection, query, where, onSnapshot, addDoc, 
   serverTimestamp, doc, setDoc, orderBy, limit, 
@@ -12,7 +12,6 @@ import {
   Timestamp,
   getDocFromServer
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { ChatSession, Message as MessageType, UserProfile, FriendRequest } from './types';
 import { 
   encryptMessage, decryptMessage, getStoredKeyPair, generateKeyPair, storeKeyPair,
@@ -2914,6 +2913,34 @@ export default function App() {
     throw new Error("Upload succeeded but no completed file URL was returned.");
   };
 
+  const uploadImageToImgBB = async (file: File): Promise<string> => {
+    const meta = import.meta as any;
+    const apiKey = meta.env?.VITE_IMGBB_API_KEY;
+    if (!apiKey) {
+      throw new Error("VITE_IMGBB_API_KEY is not configured.");
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData?.error?.message || `ImgBB API status ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data && data.success && data.data && data.data.url) {
+      return data.data.url;
+    } else {
+      throw new Error("ImgBB did not return a valid direct image URL.");
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeChat || !user) return;
@@ -2921,54 +2948,21 @@ export default function App() {
     try {
       setUploading(true);
       let url = "";
+      let fileData = "";
 
-      // 1. Try standard, highly scalable Firebase Cloud Storage first!
-      // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
-      try {
-        console.log("Initiating Cloud Storage upload for chat file: ", file.name);
-        const storagePath = `chats/${activeChat.id}/${Date.now()}_${file.name}`;
-        const fileRef = ref(storage, storagePath);
-        
-        const uploadTask = uploadBytesResumable(fileRef, file);
-        
-        url = await new Promise<string>((resolve, reject) => {
-          // Set a responsive timeout of 3 seconds for Firebase Storage to fail fast and fall back if CORS/networks are blocked
-          const timeoutId = setTimeout(() => {
-            uploadTask.cancel();
-            reject(new Error("Cloud Storage upload timed out. Trying fallback upload pipelines..."));
-          }, 3000);
-
-          uploadTask.on('state_changed', 
-            (snapshot) => {
-              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              console.log(`Chat file upload progress: ${progress}%`);
-            }, 
-            (error) => {
-              clearTimeout(timeoutId);
-              reject(error);
-            }, 
-            async () => {
-              clearTimeout(timeoutId);
-              try {
-                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve(downloadURL);
-              } catch (urlErr) {
-                reject(urlErr);
-              }
-            }
-          );
-        });
-        console.log("Uploaded successfully via Firebase Storage: ", url);
-      } catch (storageErr) {
-        console.warn("Firebase Storage direct upload failed, attempting chunked server upload fallback...", storageErr);
+      // 1. Try ImgBB if it's an image and key is configured
+      if (file.type.startsWith("image/")) {
+        try {
+          console.log("Initiating ImgBB upload for chat image:", file.name);
+          url = await uploadImageToImgBB(file);
+          console.log("Uploaded successfully via ImgBB:", url);
+        } catch (imgbbErr) {
+          console.warn("ImgBB upload failed, falling back to local server:", imgbbErr);
+        }
       }
 
-      // Convert file into base64 payload as fallback if storage failed
-      let fileData = "";
+      // 2. If not uploaded yet, use local chunked server upload
       if (!url) {
-        fileData = await fileToBase64(file);
-
-        // 2. Try modern, highly-resilient chunked upload with retries first
         try {
           console.log("Initiating robust chunked upload for: ", file.name);
           url = await uploadInChunksWithRetries(file, 3);
@@ -2976,7 +2970,7 @@ export default function App() {
         } catch (chunkError) {
           console.warn("Chunked upload pipeline failed, attempting single payload endpoint fallback...", chunkError);
           
-          // 2b. Fallback: single POST to /api/upload with retry loop
+          fileData = await fileToBase64(file);
           let singleAttempt = 0;
           const maxSingleAttempts = 3;
           while (singleAttempt < maxSingleAttempts && !url) {
@@ -3015,6 +3009,9 @@ export default function App() {
 
       // 3. Last resort local / Firestore binary payload fallback (so it NEVER fails)
       if (!url) {
+        if (!fileData) {
+          fileData = await fileToBase64(file);
+        }
         // If it is an image, we can adaptively compress it so it ALWAYS fits in the 1MB Firestore document limit
         if (file.type.startsWith("image/")) {
           try {
@@ -3846,48 +3843,16 @@ export default function App() {
       setUploading(true);
       let photoURL = "";
 
-      // 1. Try standard, highly scalable Firebase Cloud Storage first!
-      // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
+      // 1. Try ImgBB if key is configured
       try {
-        console.log("Initiating Cloud Storage upload for profile photo: ", file.name);
-        const storagePath = `profiles/${user.uid}/${Date.now()}_${file.name}`;
-        const fileRef = ref(storage, storagePath);
-        
-        const uploadTask = uploadBytesResumable(fileRef, file);
-        
-        photoURL = await new Promise<string>((resolve, reject) => {
-          // Set a responsive timeout of 3 seconds for profile photo uploads
-          const timeoutId = setTimeout(() => {
-            uploadTask.cancel();
-            reject(new Error("Cloud Storage upload timed out. Trying fallback upload pipelines..."));
-          }, 3000);
-
-          uploadTask.on('state_changed', 
-            (snapshot) => {
-              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              console.log(`Profile photo upload progress: ${progress}%`);
-            }, 
-            (error) => {
-              clearTimeout(timeoutId);
-              reject(error);
-            }, 
-            async () => {
-              clearTimeout(timeoutId);
-              try {
-                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve(downloadURL);
-              } catch (urlErr) {
-                reject(urlErr);
-              }
-            }
-          );
-        });
-        console.log("Uploaded profile photo successfully via Firebase Storage: ", photoURL);
-      } catch (storageErr) {
-        console.warn("Firebase Storage direct upload failed for profile photo, attempting server proxy fallback...", storageErr);
+        console.log("Initiating ImgBB upload for profile photo:", file.name);
+        photoURL = await uploadImageToImgBB(file);
+        console.log("Uploaded profile photo successfully via ImgBB:", photoURL);
+      } catch (imgbbErr) {
+        console.warn("ImgBB upload failed for profile photo, trying local proxy...", imgbbErr);
       }
 
-      // 2. Try our high-speed, local server media proxy fallback (highly reliable on hosted environments)
+      // 2. Try our high-speed, local server media proxy fallback
       if (!photoURL) {
         // Convert image file to Base64
         const fileData = await fileToBase64(file);
@@ -3962,48 +3927,16 @@ export default function App() {
       setUploading(true);
       let bgURL = "";
 
-      // 1. Try standard, highly scalable Firebase Cloud Storage first!
-      // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
+      // 1. Try ImgBB if key is configured
       try {
-        console.log("Initiating Cloud Storage upload for custom wallpaper: ", file.name);
-        const storagePath = `wallpapers/${user.uid}/${Date.now()}_${file.name}`;
-        const fileRef = ref(storage, storagePath);
-        
-        const uploadTask = uploadBytesResumable(fileRef, file);
-        
-        bgURL = await new Promise<string>((resolve, reject) => {
-          // Set a responsive timeout of 3 seconds for custom wallpaper uploads
-          const timeoutId = setTimeout(() => {
-            uploadTask.cancel();
-            reject(new Error("Cloud Storage upload timed out. Trying fallback upload pipelines..."));
-          }, 3000);
-
-          uploadTask.on('state_changed', 
-            (snapshot) => {
-              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              console.log(`Wallpaper upload progress: ${progress}%`);
-            }, 
-            (error) => {
-              clearTimeout(timeoutId);
-              reject(error);
-            }, 
-            async () => {
-              clearTimeout(timeoutId);
-              try {
-                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve(downloadURL);
-              } catch (urlErr) {
-                reject(urlErr);
-              }
-            }
-          );
-        });
-        console.log("Uploaded custom wallpaper successfully via Firebase Storage: ", bgURL);
-      } catch (storageErr) {
-        console.warn("Firebase Storage direct upload failed for wallpaper, attempting server proxy fallback...", storageErr);
+        console.log("Initiating ImgBB upload for custom wallpaper:", file.name);
+        bgURL = await uploadImageToImgBB(file);
+        console.log("Uploaded custom wallpaper successfully via ImgBB:", bgURL);
+      } catch (imgbbErr) {
+        console.warn("ImgBB upload failed for custom wallpaper, trying local proxy...", imgbbErr);
       }
 
-      // 2. Try our high-speed, local server media proxy fallback (highly reliable on hosted environments)
+      // 2. Try our high-speed, local server media proxy fallback
       if (!bgURL) {
         // Convert image file to Base64
         const fileData = await fileToBase64(file);

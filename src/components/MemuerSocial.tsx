@@ -10,8 +10,7 @@ import {
 import { 
   collection, doc, getDoc, setDoc, addDoc, updateDoc, onSnapshot, query, orderBy, limit, deleteDoc
 } from 'firebase/firestore';
-import { storage } from '../lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { isDefaultSandbox } from '../lib/firebase';
 import { 
   encryptMessage, getStoredKeyPair, generateKeyPair, storeKeyPair 
 } from '../lib/crypto';
@@ -329,208 +328,165 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
     }
   };
 
-  // Chunked / Cloud Storage upload helper function (bypasses proxy and file size upload limits completely)
+  // SHA-1 helper function for Cloudinary signatures using native browser subtle crypto
+  const sha1 = async (str: string): Promise<string> => {
+    const utf8 = new TextEncoder().encode(str);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', utf8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((bytes) => bytes.toString(16).padStart(2, '0')).join('');
+  };
+
+  // Dynamic media upload handler supporting ImgBB for images and Cloudinary for videos with robust fallbacks
   const uploadFileInChunks = async (file: File, onProgress?: (pct: number) => void): Promise<string> => {
-    // 1. Try standard, highly scalable Firebase Cloud Storage first!
-    // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
-    try {
-      console.log("Initiating Cloud Storage upload for: ", file.name);
-      const storagePath = `social/${user?.uid || 'anonymous'}/${Date.now()}_${file.name}`;
-      const fileRef = ref(storage, storagePath);
-      
-      const uploadTask = uploadBytesResumable(fileRef, file);
-      
-      const url = await new Promise<string>((resolve, reject) => {
-        // Set a responsive timeout of 3 seconds for Firebase Storage to fail fast and fall back if CORS/networks are blocked
-        const timeoutId = setTimeout(() => {
-          uploadTask.cancel();
-          reject(new Error("Cloud Storage upload timed out. Attempting fallback upload pipeline..."));
-        }, 3000);
+    const meta = import.meta as any;
+    const isImage = file.type.startsWith("image/") || /\.(png|jpg|jpeg|webp)$/i.test(file.name);
+    const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(file.name);
 
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-            if (onProgress) onProgress(progress);
-          }, 
-          (error) => {
-            clearTimeout(timeoutId);
-            reject(error);
-          }, 
-          async () => {
-            clearTimeout(timeoutId);
-            try {
-              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve(downloadURL);
-            } catch (urlErr) {
-              reject(urlErr);
-            }
-          }
-        );
-      });
-      console.log("Cloud Storage upload succeeded: ", url);
-      return url;
-    } catch (storageErr) {
-      console.warn("Firebase Cloud Storage upload failed, trying direct local proxy upload...", storageErr);
-    }
-
-    // 2. Try our high-speed, local server media proxy (single payload POST) which is extremely reliable and robust
-    try {
-      console.log("Initiating local proxy single payload upload for: ", file.name);
-      if (onProgress) onProgress(10);
-      
-      // Convert file to base64
-      const fileData = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (err) => reject(err);
-      });
-      
-      if (onProgress) onProgress(40);
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          fileData,
-          mimeType: file.type
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.url) {
-          console.log("Successfully uploaded to local container via single POST proxy: ", data.url);
-          if (onProgress) onProgress(100);
-          return data.url;
-        }
-      }
-      console.warn(`Local single POST proxy failed with status ${response.status}, trying chunked upload fallback...`);
-    } catch (proxyError) {
-      console.warn("Local single POST proxy upload failed, attempting chunked upload fallback...", proxyError);
-    }
-
-    // 3. Fallback to chunked upload if the file is extremely large
-    const chunkSize = 1024 * 512; // 512KB chunks
-    const totalChunks = Math.ceil(file.size / chunkSize);
-    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    try {
-      for (let index = 0; index < totalChunks; index++) {
-        const start = index * chunkSize;
-        const end = Math.min(start + chunkSize, file.size);
-        const chunkBlob = file.slice(start, end);
-
-        // Read chunk as base64
-        const chunkData = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(chunkBlob);
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = (err) => reject(err);
-        });
-
-        // Send to server chunk endpoint
-        const response = await fetch("/api/upload/chunk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            uploadId,
-            chunkIndex: index,
-            totalChunks,
-            chunkData,
-            filename: file.name
-          })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Chunk upload ${index + 1}/${totalChunks} failed with status ${response.status}`);
-        }
-
-        const resData = await response.json();
-        if (onProgress) {
-          onProgress(Math.round(((index + 1) / totalChunks) * 100));
-        }
-
-        if (resData.completed && resData.url) {
-          return resData.url;
-        }
-      }
-
-      throw new Error("Upload completed but no URL was returned from the server.");
-    } catch (err: any) {
-      console.warn("Chunked upload failed. Using highly compatible client-side E2EE Base64 local fallback...", err);
-      
-      // If it is an image, compress it using HTML5 Canvas to fit nicely inside database limits (<1MB)
-      if (file.type.startsWith("image/")) {
+    if (isImage) {
+      console.log("Initiating ImgBB upload for image:", file.name);
+      const apiKey = meta.env?.VITE_IMGBB_API_KEY;
+      if (!apiKey) {
+        console.warn("VITE_IMGBB_API_KEY is not configured! Using local Base64 fallback.");
         return new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(file);
-          reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target?.result as string;
-            img.onload = () => {
-              const canvas = document.createElement("canvas");
-              let width = img.width;
-              let height = img.height;
-              
-              // Maintain aspect ratio with max dimension 1200px
-              const MAX_DIM = 1200;
-              if (width > MAX_DIM || height > MAX_DIM) {
-                if (width > height) {
-                  height = Math.round((height * MAX_DIM) / width);
-                  width = MAX_DIM;
-                } else {
-                  width = Math.round((width * MAX_DIM) / height);
-                  height = MAX_DIM;
-                }
-              }
-              
-              canvas.width = width;
-              canvas.height = height;
-              const ctx = canvas.getContext("2d");
-              if (ctx) {
-                ctx.drawImage(img, 0, 0, width, height);
-                // Compress to 0.7 quality JPG for a super lightweight payload
-                const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-                if (onProgress) onProgress(100);
-                resolve(dataUrl);
-              } else {
-                if (onProgress) onProgress(100);
-                resolve(event.target?.result as string);
-              }
-            };
-            img.onerror = () => {
-              if (onProgress) onProgress(100);
-              resolve(event.target?.result as string);
-            };
+          reader.onload = () => {
+            if (onProgress) onProgress(100);
+            resolve(reader.result as string);
           };
-          reader.onerror = (readErr) => reject(readErr);
+          reader.onerror = (err) => reject(err);
         });
-      } else {
-        // If it's a video or other file:
-        // If file is small (< 1.5MB), use normal base64 encoding. Otherwise use objectURL.
-        if (file.size < 1.5 * 1024 * 1024) {
-          return new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => {
-              if (onProgress) onProgress(100);
-              resolve(reader.result as string);
-            };
-            reader.onerror = (readErr) => reject(readErr);
-          });
-        } else {
-          if (onProgress) onProgress(100);
-          // Return local object URL as a last-resort (warning that other users might not see it,
-          // but at least it renders in the uploader's browser without crashing).
-          return URL.createObjectURL(file);
-        }
       }
+
+      const formData = new FormData();
+      formData.append("image", file);
+
+      return new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `https://api.imgbb.com/1/upload?key=${apiKey}`);
+
+        if (xhr.upload && onProgress) {
+          xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable) {
+              const pct = Math.round((event.loaded / event.total) * 100);
+              onProgress(pct);
+            }
+          });
+        }
+
+        xhr.onload = () => {
+          try {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const res = JSON.parse(xhr.responseText);
+              if (res && res.success && res.data && res.data.url) {
+                console.log("ImgBB upload succeeded:", res.data.url);
+                resolve(res.data.url);
+              } else {
+                reject(new Error("ImgBB did not return a valid direct image URL."));
+              }
+            } else {
+              const errRes = JSON.parse(xhr.responseText || "{}");
+              reject(new Error(errRes?.error?.message || `ImgBB returned status ${xhr.status}`));
+            }
+          } catch (e: any) {
+            reject(new Error(`Failed to parse ImgBB response: ${e.message}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("ImgBB network error."));
+        xhr.send(formData);
+      });
+
+    } else if (isVideo) {
+      console.log("Initiating Cloudinary upload for video:", file.name);
+      const cloudName = meta.env?.VITE_CLOUDINARY_CLOUD_NAME;
+      const apiKey = meta.env?.VITE_CLOUDINARY_API_KEY;
+      const apiSecret = meta.env?.VITE_CLOUDINARY_API_SECRET;
+      const uploadPreset = meta.env?.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+      if (!cloudName) {
+        console.warn("Cloudinary Cloud Name is not configured! Using local ObjectURL fallback.");
+        if (onProgress) onProgress(100);
+        return URL.createObjectURL(file);
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("resource_type", "video");
+
+      // Check if we should do a signed upload or unsigned upload
+      if (apiKey && apiSecret) {
+        const timestamp = Math.round(new Date().getTime() / 1000).toString();
+        const paramsToSign: Record<string, string> = {
+          timestamp: timestamp
+        };
+        if (uploadPreset) {
+          paramsToSign["upload_preset"] = uploadPreset;
+        }
+
+        // Generate dynamic alphabetical signature
+        const sortedKeys = Object.keys(paramsToSign).sort();
+        const signatureString = sortedKeys.map(key => `${key}=${paramsToSign[key]}`).join('&') + apiSecret;
+        const signature = await sha1(signatureString);
+
+        formData.append("api_key", apiKey);
+        formData.append("timestamp", timestamp);
+        formData.append("signature", signature);
+        if (uploadPreset) {
+          formData.append("upload_preset", uploadPreset);
+        }
+      } else if (uploadPreset) {
+        // Unsigned upload fallback using the preset
+        formData.append("upload_preset", uploadPreset);
+      } else {
+        console.warn("Cloudinary requires either (API Key + Secret) or an Upload Preset! Using local ObjectURL fallback.");
+        if (onProgress) onProgress(100);
+        return URL.createObjectURL(file);
+      }
+
+      return new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`);
+
+        if (xhr.upload && onProgress) {
+          xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable) {
+              const pct = Math.round((event.loaded / event.total) * 100);
+              onProgress(pct);
+            }
+          });
+        }
+
+        xhr.onload = () => {
+          try {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const res = JSON.parse(xhr.responseText);
+              if (res && res.secure_url) {
+                console.log("Cloudinary video upload succeeded:", res.secure_url);
+                resolve(res.secure_url);
+              } else if (res && res.url) {
+                console.log("Cloudinary video upload succeeded:", res.url);
+                resolve(res.url);
+              } else {
+                reject(new Error("Cloudinary did not return a valid direct video URL."));
+              }
+            } else {
+              const errRes = JSON.parse(xhr.responseText || "{}");
+              reject(new Error(errRes?.error?.message || `Cloudinary returned status ${xhr.status}`));
+            }
+          } catch (e: any) {
+            reject(new Error(`Failed to parse Cloudinary response: ${e.message}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Cloudinary network error."));
+        xhr.send(formData);
+      });
+
+    } else {
+      console.warn("Unsupported file type for dual-upload. Falling back to local ObjectURL.");
+      if (onProgress) onProgress(100);
+      return URL.createObjectURL(file);
     }
   };
 

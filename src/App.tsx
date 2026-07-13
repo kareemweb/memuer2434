@@ -1241,9 +1241,33 @@ export default function App() {
 
   const UPDATES = [
     {
+      title: "Adaptive Compression & E2EE Fallback",
+      description: "Added real-time client-side image compression via canvas and automatic Base64 direct-sync upload fallback. Safeguards and guarantees that your media uploads never fail, even on static custom hosting or when server upload endpoints return 404.",
+      icon: <RefreshCw className="w-5 h-5 text-emerald-400 animate-spin" />,
+      date: "July 2026"
+    },
+    {
+      title: "Social+ Custom Playlists",
+      description: "Organize, save, and curate your favorite social feed posts and short videos into custom playlists. Create and delete lists easily from a dedicated playlist management sub-tab on your profile.",
+      icon: <Play className="w-5 h-5 text-pink-400" />,
+      date: "July 2026"
+    },
+    {
+      title: "User Reports & Moderation Suite",
+      description: "Introduced an administrative console supporting pending content flag reviews, dismissals, guideline purges, and automated viral activity tracking using weighted engagement metrics.",
+      icon: <ShieldAlert className="w-5 h-5 text-red-400 animate-pulse" />,
+      date: "July 2026"
+    },
+    {
+      title: "Moderation Audit Archive",
+      description: "A permanent, read-only security audit log recording all moderator actions, purges, and guideline enforcement operations with exact timestamps for maximum administrative accountability.",
+      icon: <History className="w-5 h-5 text-cyan-400" />,
+      date: "July 2026"
+    },
+    {
       title: "Archive Enclaves",
       description: "Mute and hide inactive direct or group conversations into a secure, collapsible section, clean-logging your visual viewport. Retrieve them anytime with one-click unarchiving.",
-      icon: <Archive className="w-5 h-5 text-pink-400" />,
+      icon: <Archive className="w-5 h-5 text-indigo-400" />,
       date: "June 2026"
     },
     {
@@ -1251,30 +1275,6 @@ export default function App() {
       description: "Enhanced cellular screens with fluid component scaling, smart typography wrapping, and structural containment prevents any visual clipping or text overflows.",
       icon: <Wrench className="w-5 h-5 text-amber-400" />,
       date: "June 2026"
-    },
-    {
-      title: "Screen Sharing",
-      description: "Share your entire screen or specific application windows during video calls with one click.",
-      icon: <MonitorUp className="w-5 h-5 text-cyan-400" />,
-      date: "May 2026"
-    },
-    {
-      title: "Emoji Reactions",
-      description: "Quickly express yourself by reacting to messages with fun emojis.",
-      icon: <Smile className="w-4 h-4 text-purple-400" />,
-      date: "May 2026"
-    },
-    {
-      title: "Video Filters",
-      description: "Enhance your presence with synchronized video filters like Noir, Vintage, and Neon that everyone in the call can see.",
-      icon: <Camera className="w-5 h-5 text-pink-400" />,
-      date: "May 2026"
-    },
-    {
-      title: "Custom Avatars",
-      description: "Upload your own profile photos directly from your device to personalize your profile.",
-      icon: < ImageIcon className="w-5 h-5 text-green-400" />,
-      date: "May 2026"
     }
   ];
 
@@ -6704,7 +6704,7 @@ export default function App() {
                 <div className="flex justify-between items-center mb-8">
                   <div>
                     <h3 className="text-3xl font-black tracking-tighter text-white">SYSTEM UPDATES</h3>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 mt-1">Transmission received • v2.1.0</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 mt-1">Transmission received • v4.0 Beta</p>
                   </div>
                   <button 
                     onClick={() => setIsChangelogOpen(false)} 

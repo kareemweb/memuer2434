@@ -164,6 +164,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
   const [profilePic, setProfilePic] = useState<string>(user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid || 'default'}`);
   const [displayName, setDisplayName] = useState<string>(user?.displayName || 'Memuer Citizen');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [uploadingProfilePic, setUploadingProfilePic] = useState(false);
   const [tempBio, setTempBio] = useState(bio);
   const [tempPic, setTempPic] = useState(profilePic);
   const [tempName, setTempName] = useState(displayName);
@@ -195,7 +196,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
   const [deletingContent, setDeletingContent] = useState<{ type: 'post' | 'short'; id: string } | null>(null);
   const [reportingItem, setReportingItem] = useState<{ type: 'post' | 'short'; id: string; item: any } | null>(null);
   const [reportReason, setReportReason] = useState('');
-  const [infoContent, setInfoContent] = useState<{ type: 'post' | 'short'; caption: string; date: string; views: number; likes: number } | null>(null);
+  const [infoContent, setInfoContent] = useState<{ type: 'post' | 'short'; id?: string; item?: any; caption: string; date: string; views: number; likes: number } | null>(null);
 
   const handleDeleteContent = async (type: 'post' | 'short', id: string) => {
     try {
@@ -336,9 +337,40 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
     if (isImage) {
       console.log("Initiating ImgBB upload for image:", file.name);
+
+      // 1. Try server-side proxy upload first
+      try {
+        console.log("Attempting server-side ImgBB proxy upload for social image...");
+        const fileToBase64 = (f: File): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(f);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = (e) => reject(e);
+          });
+        };
+        const fileData = await fileToBase64(file);
+        const res = await fetch("/api/upload-imgbb", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, fileData }),
+        });
+        if (res.ok) {
+          const resJson = await res.json();
+          if (resJson && resJson.url) {
+            console.log("Server-side ImgBB proxy upload succeeded for social image:", resJson.url);
+            if (onProgress) onProgress(100);
+            return resJson.url;
+          }
+        }
+      } catch (err) {
+        console.warn("Server-side ImgBB proxy upload failed for social image, attempting client direct upload:", err);
+      }
+
+      // 2. Fall back to client-side direct upload
       const apiKey = import.meta.env.VITE_IMGBB_API_KEY;
       if (!apiKey) {
-        console.warn("VITE_IMGBB_API_KEY is not configured! Using local Base64 fallback.");
+        console.warn("Neither server nor client VITE_IMGBB_API_KEY is configured! Using local Base64 fallback.");
         return new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(file);
@@ -391,6 +423,38 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
     } else if (isVideo) {
       console.log("Initiating Supabase Storage upload for video:", file.name);
+      
+      // 1. Try server-side proxy upload first
+      try {
+        console.log("Attempting server-side Supabase video proxy upload...");
+        const fileToBase64 = (f: File): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(f);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = (e) => reject(e);
+          });
+        };
+        const fileData = await fileToBase64(file);
+        if (onProgress) onProgress(30);
+        const res = await fetch("/api/upload-supabase-video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, fileData, mimeType: file.type }),
+        });
+        if (res.ok) {
+          const resJson = await res.json();
+          if (resJson && resJson.url) {
+            console.log("Server-side Supabase video proxy upload succeeded for social video:", resJson.url);
+            if (onProgress) onProgress(100);
+            return resJson.url;
+          }
+        }
+      } catch (err) {
+        console.warn("Server-side Supabase video proxy upload failed, attempting client direct upload:", err);
+      }
+
+      // 2. Fall back to client-side direct upload
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -401,7 +465,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
       const supabase = createClient(supabaseUrl, supabaseAnonKey);
       const uniquePath = `${Date.now()}_${file.name}`;
 
-      if (onProgress) onProgress(20);
+      if (onProgress) onProgress(50);
 
       try {
         const { data, error } = await supabase.storage
@@ -412,7 +476,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
           throw error;
         }
 
-        if (onProgress) onProgress(80);
+        if (onProgress) onProgress(85);
 
         const publicUrlResult = supabase.storage.from('videos').getPublicUrl(data.path);
         const publicUrl = publicUrlResult?.data?.publicUrl;
@@ -1305,12 +1369,23 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
   };
 
   // Profile Edit Save
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     setBio(tempBio);
     setProfilePic(tempPic);
     setDisplayName(tempName);
     localStorage.setItem('social_bio', tempBio);
     setIsEditingProfile(false);
+
+    if (user?.uid && db) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          displayName: tempName,
+          photoURL: tempPic
+        });
+      } catch (err) {
+        console.error("Failed to sync profile changes with Firestore:", err);
+      }
+    }
   };
 
   return (
@@ -1665,6 +1740,9 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                           }}
                         />
 
+                        {/* Bottom shadow gradient mask for caption readability */}
+                        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none z-10" />
+
                         {/* Centered Play Overlay Badge if paused */}
                         <AnimatePresence>
                           {isPaused && (
@@ -1682,130 +1760,138 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                         </AnimatePresence>
                       </div>
 
-                      {/* Right-side floating action buttons */}
-                      <div className="absolute right-4 bottom-24 z-30 flex flex-col items-center gap-5">
+                      {/* Right-side floating action buttons (Sleek, compact, failsafe against overflow) */}
+                      <div className="absolute right-3 bottom-24 sm:bottom-28 z-30 flex flex-col items-center gap-2 sm:gap-3.5 max-h-[60%] overflow-y-auto scrollbar-none">
                         {/* Like Button */}
-                        <div className="flex flex-col items-center gap-1">
+                        <div className="flex flex-col items-center gap-0.5">
                           <button 
                             onClick={() => handleLikeShort(short.id)}
-                            className={`p-3 rounded-full backdrop-blur-md border transition-all active:scale-75 shadow-lg cursor-pointer ${
+                            className={`p-2.5 sm:p-3 rounded-full backdrop-blur-md border transition-all active:scale-75 shadow-lg cursor-pointer ${
                               isLiked 
                                 ? 'bg-pink-500/25 border-pink-500/40 text-pink-500' 
                                 : 'bg-black/40 border-white/10 text-white hover:bg-black/60'
                             }`}
                           >
-                            <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
+                            <Heart className={`w-4.5 h-4.5 sm:w-5 sm:h-5 ${isLiked ? 'fill-current' : ''}`} />
                           </button>
-                          <span className="text-[10px] font-bold text-white drop-shadow-md">{short.likes}</span>
+                          <span className="text-[9px] font-bold text-white drop-shadow-md">{short.likes}</span>
                         </div>
 
                         {/* Save/Bookmark Button */}
-                        <div className="flex flex-col items-center gap-1">
+                        <div className="flex flex-col items-center gap-0.5">
                           <button 
                             onClick={() => setSavingItem({ type: 'short', id: short.id, item: short })}
-                            className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 hover:text-pink-400 transition-all active:scale-75 shadow-lg cursor-pointer"
+                            className="p-2.5 sm:p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 hover:text-pink-400 transition-all active:scale-75 shadow-lg cursor-pointer"
                             title="Save to playlist"
                           >
-                            <Bookmark className="w-5 h-5" />
+                            <Bookmark className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
                           </button>
-                          <span className="text-[10px] font-bold text-white drop-shadow-md">Save</span>
-                        </div>
-
-                        {/* Report Button */}
-                        <div className="flex flex-col items-center gap-1">
-                          <button 
-                            onClick={() => setReportingItem({ type: 'short', id: short.id, item: short })}
-                            className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 hover:text-red-400 transition-all active:scale-75 shadow-lg cursor-pointer"
-                            title="Report Short"
-                          >
-                            <Flag className="w-5 h-5" />
-                          </button>
-                          <span className="text-[10px] font-bold text-white drop-shadow-md">Report</span>
+                          <span className="text-[9px] font-bold text-white drop-shadow-md">Save</span>
                         </div>
 
                         {/* Mute Button */}
-                        <button 
-                          onClick={() => setIsMuted(!isMuted)}
-                          className={`p-3 rounded-full backdrop-blur-md border transition-all active:scale-75 shadow-lg cursor-pointer ${
-                            isMuted 
-                              ? 'bg-red-500/25 border-red-500/40 text-red-400' 
-                              : 'bg-black/40 border-white/10 text-white hover:bg-black/60'
-                          }`}
-                          title={isMuted ? "Unmute" : "Mute"}
-                        >
-                          {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                        </button>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button 
+                            onClick={() => setIsMuted(!isMuted)}
+                            className={`p-2.5 sm:p-3 rounded-full backdrop-blur-md border transition-all active:scale-75 shadow-lg cursor-pointer ${
+                              isMuted 
+                                ? 'bg-red-500/25 border-red-500/40 text-red-400' 
+                                : 'bg-black/40 border-white/10 text-white hover:bg-black/60'
+                            }`}
+                            title={isMuted ? "Unmute" : "Mute"}
+                          >
+                            {isMuted ? <VolumeX className="w-4.5 h-4.5 sm:w-5 sm:h-5" /> : <Volume2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
+                          </button>
+                          <span className="text-[9px] font-bold text-white drop-shadow-md">{isMuted ? "Muted" : "Mute"}</span>
+                        </div>
 
                         {/* Fit/Fill Screen Toggle Button */}
-                        <button 
-                          onClick={() => setVideoFitMap(prev => ({
-                            ...prev,
-                            [short.id]: prev[short.id] === 'cover' ? 'contain' : 'cover'
-                          }))}
-                          className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
-                          title={isCover ? "Fit Screen" : "Fill Screen"}
-                        >
-                          {isCover ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-                        </button>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button 
+                            onClick={() => setVideoFitMap(prev => ({
+                              ...prev,
+                              [short.id]: prev[short.id] === 'cover' ? 'contain' : 'cover'
+                            }))}
+                            className="p-2.5 sm:p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
+                            title={isCover ? "Fit Screen" : "Fill Screen"}
+                          >
+                            {isCover ? <Minimize2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" /> : <Maximize2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
+                          </button>
+                          <span className="text-[9px] font-bold text-white drop-shadow-md">{isCover ? "Fit" : "Fill"}</span>
+                        </div>
 
                         {/* Native OS Fullscreen Button */}
-                        <button 
-                          onClick={() => {
-                            const videoEl = videoRefs.current[short.id];
-                            if (videoEl) {
-                              if (videoEl.requestFullscreen) {
-                                videoEl.requestFullscreen();
-                              } else if ((videoEl as any).webkitRequestFullscreen) {
-                                (videoEl as any).webkitRequestFullscreen();
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button 
+                            onClick={() => {
+                              const videoEl = videoRefs.current[short.id];
+                              if (videoEl) {
+                                if (videoEl.requestFullscreen) {
+                                  videoEl.requestFullscreen();
+                                } else if ((videoEl as any).webkitRequestFullscreen) {
+                                  (videoEl as any).webkitRequestFullscreen();
+                                }
                               }
-                            }
-                          }}
-                          className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
-                          title="Open Native Fullscreen"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-                          </svg>
-                        </button>
+                            }}
+                            className="p-2.5 sm:p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
+                            title="Open Native Fullscreen"
+                          >
+                            <svg className="w-4.5 h-4.5 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                            </svg>
+                          </button>
+                          <span className="text-[9px] font-bold text-white drop-shadow-md">Full</span>
+                        </div>
 
                         {/* Direct Share Button */}
-                        <button 
-                          onClick={() => setSharingContent({
-                            type: 'short',
-                            id: short.id,
-                            caption: short.caption,
-                            url: short.videoUrl
-                          })}
-                          className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
-                          title="Share video"
-                        >
-                          <Send className="w-5 h-5" />
-                        </button>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button 
+                            onClick={() => setSharingContent({
+                              type: 'short',
+                              id: short.id,
+                              caption: short.caption,
+                              url: short.videoUrl
+                            })}
+                            className="p-2.5 sm:p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
+                            title="Share video"
+                          >
+                            <Send className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                          </button>
+                          <span className="text-[9px] font-bold text-white drop-shadow-md">Share</span>
+                        </div>
 
                         {/* Info Button */}
-                        <button 
-                          onClick={() => setInfoContent({
-                            type: 'short',
-                            caption: short.caption,
-                            date: short.createdAt || 'Released recently',
-                            views: short.views || 0,
-                            likes: short.likes
-                          })}
-                          className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer"
-                          title="Video Info"
-                        >
-                          <Info className="w-5 h-5" />
-                        </button>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button 
+                            onClick={() => setInfoContent({
+                              type: 'short',
+                              id: short.id,
+                              item: short,
+                              caption: short.caption,
+                              date: short.createdAt || 'Released recently',
+                              views: short.views || 0,
+                              likes: short.likes
+                            })}
+                            className="p-2.5 sm:p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-black/60 transition-all active:scale-75 shadow-lg cursor-pointer animate-pulse"
+                            title="Video Info & Report"
+                          >
+                            <Info className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-pink-400" />
+                          </button>
+                          <span className="text-[9px] font-bold text-white drop-shadow-md">Info</span>
+                        </div>
 
                         {/* Delete Button (Owner only) */}
                         {(short.ownerId === user?.uid || short.username === displayName.toLowerCase().replace(/\s+/g, '.')) && (
-                          <button 
-                            onClick={() => setDeletingContent({ type: 'short', id: short.id })}
-                            className="p-3 rounded-full bg-red-500/25 backdrop-blur-md border border-red-500/40 text-red-400 hover:bg-red-500/40 transition-all active:scale-75 shadow-lg cursor-pointer"
-                            title="Delete video"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <button 
+                              onClick={() => setDeletingContent({ type: 'short', id: short.id })}
+                              className="p-2.5 sm:p-3 rounded-full bg-red-500/25 backdrop-blur-md border border-red-500/40 text-red-400 hover:bg-red-500/40 transition-all active:scale-75 shadow-lg cursor-pointer"
+                              title="Delete video"
+                            >
+                              <Trash2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                            </button>
+                            <span className="text-[9px] font-bold text-white drop-shadow-md">Delete</span>
+                          </div>
                         )}
                       </div>
 
@@ -1817,9 +1903,9 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                         </span>
                       </div>
 
-                      {/* Left Bottom Details Overlay */}
-                      <div className="absolute bottom-6 left-6 right-20 z-20 space-y-3 pointer-events-none">
-                        <div className="flex items-center gap-2">
+                      {/* Left Bottom Details Overlay (Shifted up to sit beautifully above the bottom nav bar, containerized for readability) */}
+                      <div className="absolute bottom-20 left-4 right-16 z-30 space-y-2 pointer-events-none">
+                        <div className="flex items-center gap-2 pointer-events-auto">
                           <div className="w-8 h-8 rounded-full border border-white/20 overflow-hidden bg-slate-800">
                             <img src={short.userAvatar} className="w-full h-full object-cover" />
                           </div>
@@ -1827,7 +1913,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                           {short.username !== displayName.toLowerCase().replace(/\s+/g, '.') && (
                             <button
                               onClick={() => handleToggleFollow(short.username, short.ownerId)}
-                              className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border transition-all cursor-pointer pointer-events-auto ${
+                              className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
                                 followedUsers.includes(short.ownerId || short.username)
                                   ? 'bg-white/10 border-white/20 text-slate-300'
                                   : 'bg-pink-500 hover:bg-pink-600 border-transparent text-white active:scale-95'
@@ -1839,16 +1925,19 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                           <span className="px-1.5 py-0.5 bg-pink-500/80 rounded text-[8px] font-bold uppercase text-white drop-shadow-md">Creator</span>
                         </div>
 
-                        <p className="text-xs text-slate-100 leading-relaxed drop-shadow-md font-medium">
-                          {short.caption}
-                        </p>
+                        {/* High-contrast container for complete readability against any background */}
+                        <div className="bg-black/45 backdrop-blur-md p-2.5 sm:p-3.5 rounded-2xl border border-white/10 flex flex-col gap-1.5 pointer-events-auto shadow-lg shadow-black/40 max-w-sm">
+                          <p className="text-xs text-slate-100 leading-relaxed drop-shadow-md font-medium">
+                            {short.caption}
+                          </p>
 
-                        <div className="flex items-center gap-1.5 text-[9px] text-pink-300 font-bold tracking-wide drop-shadow-md">
-                          <Sparkles className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
-                          <div className="overflow-hidden w-40 h-4 relative">
-                            <span className="absolute whitespace-nowrap animate-[marquee_15s_linear_infinite]">
-                              🎵 {short.musicTitle} {isMuted ? '(Muted - Tap speaker button to unmute)' : ''}
-                            </span>
+                          <div className="flex items-center gap-1.5 text-[9px] text-pink-300 font-bold tracking-wide drop-shadow-md">
+                            <Sparkles className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
+                            <div className="overflow-hidden w-40 h-4 relative">
+                              <span className="absolute whitespace-nowrap animate-[marquee_15s_linear_infinite]">
+                                🎵 {short.musicTitle} {isMuted ? '(Muted - Tap speaker button to unmute)' : ''}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2615,6 +2704,43 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
               </div>
 
               <div className="space-y-4">
+                {/* Profile Pic Upload & Preview */}
+                <div className="flex flex-col items-center gap-3 bg-white/5 border border-white/10 p-3.5 rounded-2xl">
+                  <div className="w-16 h-16 rounded-full border border-pink-500/40 overflow-hidden bg-slate-800 relative group">
+                    <img src={tempPic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid || 'default'}`} className="w-full h-full object-cover" />
+                  </div>
+                  
+                  <div className="w-full text-center">
+                    <label className="inline-block px-3 py-1.5 bg-gradient-to-r from-pink-500 to-yellow-500 hover:from-pink-600 hover:to-yellow-600 active:scale-95 text-[10px] font-black uppercase tracking-wider text-white rounded-lg cursor-pointer transition-all shadow-md shadow-pink-500/10">
+                      Upload New Photo
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            setUploadingProfilePic(true);
+                            const uploadedUrl = await uploadFileInChunks(file);
+                            if (uploadedUrl) {
+                              setTempPic(uploadedUrl);
+                            }
+                          } catch (err) {
+                            console.error("Error uploading profile photo:", err);
+                            alert("Failed to upload profile image: " + (err instanceof Error ? err.message : String(err)));
+                          } finally {
+                            setUploadingProfilePic(false);
+                          }
+                        }}
+                      />
+                    </label>
+                    {uploadingProfilePic && (
+                      <p className="text-[9px] text-pink-400 font-bold mt-1.5 animate-pulse">Uploading photo...</p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Profile Pic URL */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Profile Picture URL</label>
@@ -2845,6 +2971,19 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                   </p>
                 </div>
               </div>
+
+              {infoContent.id && infoContent.item && (
+                <button 
+                  onClick={() => {
+                    setReportingItem({ type: infoContent.type, id: infoContent.id || '', item: infoContent.item });
+                    setInfoContent(null);
+                  }}
+                  className="w-full py-2 bg-red-600/20 hover:bg-red-600/35 border border-red-500/30 rounded-xl text-xs font-black uppercase tracking-widest text-red-400 transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-98"
+                >
+                  <Flag className="w-3.5 h-3.5" />
+                  Report Content
+                </button>
+              )}
 
               <button 
                 onClick={() => setInfoContent(null)}

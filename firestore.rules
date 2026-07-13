@@ -222,5 +222,11 @@ service cloud.firestore {
       allow update: if isSignedIn() && !isTemporarilyBanned() && existing().ownerId == request.auth.uid && incoming().ownerId == request.auth.uid;
       allow delete: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
     }
+
+    // --- Social Reports ---
+    match /social_reports/{reportId} {
+      allow create: if isSignedIn() && !isTemporarilyBanned() && incoming().reporterId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
   }
 }

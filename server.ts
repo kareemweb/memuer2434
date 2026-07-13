@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
 import { WORLD_CUP_MATCHES } from "./src/data/worldCupMatches";
 
 dotenv.config();
@@ -47,6 +48,75 @@ async function askAIServer(prompt: string, history?: string): Promise<string> {
     console.error("Error calling Groq API on server:", error);
     return `Error: Could not generate a response from Groq AI companion. Reason: ${error?.message || error}`;
   }
+}
+
+async function uploadToImgBBOnServer(base64Data: string): Promise<string | null> {
+  const apiKey = (process.env.IMGBB_API_KEY || process.env.VITE_IMGBB_API_KEY || "b7f93a1dcac5269caed570648a1425f9").trim().replace(/^["']|["']$/g, '');
+  if (!apiKey) {
+    console.log("No server-side ImgBB API key configured.");
+    return null;
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append("image", base64Data);
+
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (response.ok) {
+      const data = await response.json() as any;
+      if (data && data.success && data.data && data.data.url) {
+        console.log("Server-side ImgBB upload succeeded:", data.data.url);
+        return data.data.url;
+      }
+    } else {
+      const errText = await response.text();
+      console.error(`Server-side ImgBB API error response:`, errText);
+    }
+  } catch (err) {
+    console.error("Server-side ImgBB upload failed:", err);
+  }
+  return null;
+}
+
+async function uploadToSupabaseOnServer(buffer: Buffer, filename: string, mimeType: string): Promise<string | null> {
+  const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://kujcneihjbsdzhusnezo.supabase.co").trim().replace(/^["']|["']$/g, '');
+  const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_dLAC842Ajk0NAqutWAQ44g_Nsof_nMZ").trim().replace(/^["']|["']$/g, '');
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.log("No server-side Supabase credentials configured.");
+    return null;
+  }
+
+  try {
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const uniquePath = `${Date.now()}_${filename.replace(/[^a-zA-Z0-9.\-_]/g, "_")}`;
+
+    const { data, error } = await supabase.storage
+      .from('videos')
+      .upload(uniquePath, buffer, {
+        contentType: mimeType || 'video/mp4',
+        duplex: 'half'
+      });
+
+    if (error) {
+      console.error("Supabase server-side storage upload failed:", error);
+      throw error;
+    }
+
+    const publicUrlResult = supabase.storage.from('videos').getPublicUrl(uniquePath);
+    const publicUrl = publicUrlResult?.data?.publicUrl;
+    if (publicUrl) {
+      console.log("Supabase server-side upload succeeded:", publicUrl);
+      return publicUrl;
+    }
+  } catch (err) {
+    console.error("Server-side Supabase upload exception:", err);
+  }
+  return null;
 }
 
 async function startServer() {
@@ -1388,7 +1458,38 @@ async function startServer() {
         // Clean up temp chunk files
         await fs.promises.rm(userTempDir, { recursive: true, force: true }).catch(e => console.error("Error cleaning up chunk files:", e));
 
-        const fileUrl = `/uploads/${safeFilename}`;
+        // If it's an image, attempt server-side ImgBB upload
+        const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(filename);
+        const isVideo = /\.(mp4|mov|webm|avi|mkv)$/i.test(filename);
+        let fileUrl = `/uploads/${safeFilename}`;
+
+        if (isImage) {
+          try {
+            const fileBuffer = await fs.promises.readFile(finalFilePath);
+            const base64String = fileBuffer.toString("base64");
+            const imgbbUrl = await uploadToImgBBOnServer(base64String);
+            if (imgbbUrl) {
+              fileUrl = imgbbUrl;
+              // Clean up the local file since we have it hosted on ImgBB
+              await fs.promises.unlink(finalFilePath).catch(e => console.warn("Error deleting local file after ImgBB upload:", e));
+            }
+          } catch (imgErr) {
+            console.error("Chunked image upload to ImgBB failed, keeping local file:", imgErr);
+          }
+        } else if (isVideo) {
+          try {
+            const fileBuffer = await fs.promises.readFile(finalFilePath);
+            const supabaseUrl = await uploadToSupabaseOnServer(fileBuffer, filename, "video/mp4");
+            if (supabaseUrl) {
+              fileUrl = supabaseUrl;
+              // Clean up local file since we have it hosted on Supabase
+              await fs.promises.unlink(finalFilePath).catch(e => console.warn("Error deleting local file after Supabase upload:", e));
+            }
+          } catch (vidErr) {
+            console.error("Chunked video upload to Supabase failed, keeping local file:", vidErr);
+          }
+        }
+
         return res.json({ url: fileUrl, completed: true });
       }
 
@@ -1396,6 +1497,51 @@ async function startServer() {
     } catch (err: any) {
       console.error("Chunk upload error:", err);
       res.status(500).json({ error: err?.message || "Failed to write chunk to disk." });
+    }
+  });
+
+  // Dedicated server-side proxy for ImgBB uploads
+  app.post("/api/upload-imgbb", async (req, res) => {
+    try {
+      const { filename, fileData } = req.body;
+      if (!fileData) {
+        return res.status(400).json({ error: "Missing fileData payload." });
+      }
+
+      const base64Data = fileData.replace(/^data:[^;]+;base64,/, "");
+      const imgbbUrl = await uploadToImgBBOnServer(base64Data);
+      if (imgbbUrl) {
+        console.log("Successfully uploaded to ImgBB via proxy route:", imgbbUrl);
+        return res.json({ url: imgbbUrl });
+      }
+
+      return res.status(500).json({ error: "Failed to upload image to ImgBB server-side." });
+    } catch (err: any) {
+      console.error("Proxy ImgBB Upload Error:", err);
+      res.status(500).json({ error: err?.message || "Internal server error during ImgBB upload." });
+    }
+  });
+
+  // Dedicated server-side proxy for Supabase video uploads
+  app.post("/api/upload-supabase-video", async (req, res) => {
+    try {
+      const { filename, fileData, mimeType } = req.body;
+      if (!fileData) {
+        return res.status(400).json({ error: "Missing fileData payload." });
+      }
+
+      const base64Data = fileData.replace(/^data:[^;]+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+      const supabaseUrl = await uploadToSupabaseOnServer(buffer, filename, mimeType || "video/mp4");
+      if (supabaseUrl) {
+        console.log("Successfully uploaded to Supabase via proxy route:", supabaseUrl);
+        return res.json({ url: supabaseUrl });
+      }
+
+      return res.status(500).json({ error: "Failed to upload video to Supabase server-side." });
+    } catch (err: any) {
+      console.error("Proxy Supabase Video Upload Error:", err);
+      res.status(500).json({ error: err?.message || "Internal server error during Supabase video upload." });
     }
   });
 
@@ -1409,6 +1555,31 @@ async function startServer() {
 
       // Convert Base64 back into raw binary bytes
       const base64Data = fileData.replace(/^data:[^;]+;base64,/, "");
+
+      // If it is an image, try server-side ImgBB upload first
+      const isImage = mimeType?.startsWith("image/") || /\.(png|jpg|jpeg|webp|gif)$/i.test(filename);
+      if (isImage) {
+        const imgbbUrl = await uploadToImgBBOnServer(base64Data);
+        if (imgbbUrl) {
+          return res.json({ url: imgbbUrl });
+        }
+      }
+
+      // If it is a video, try server-side Supabase upload first
+      const isVideo = mimeType?.startsWith("video/") || /\.(mp4|mov|webm|avi|mkv)$/i.test(filename);
+      if (isVideo) {
+        try {
+          const buffer = Buffer.from(base64Data, "base64");
+          const supabaseUrl = await uploadToSupabaseOnServer(buffer, filename, mimeType || "video/mp4");
+          if (supabaseUrl) {
+            return res.json({ url: supabaseUrl });
+          }
+        } catch (vidErr) {
+          console.error("Single video upload to Supabase failed, falling back to local file:", vidErr);
+        }
+      }
+
+      // Fallback to storing locally on disk
       const buffer = Buffer.from(base64Data, "base64");
 
       // Generate localized unique token for collision avoidance

@@ -2916,9 +2916,30 @@ export default function App() {
   };
 
   const uploadImageToImgBB = async (file: File): Promise<string> => {
+    // 1. Try server-side proxy upload first
+    try {
+      console.log("Attempting server-side ImgBB proxy upload...");
+      const fileData = await fileToBase64(file);
+      const res = await fetch("/api/upload-imgbb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, fileData }),
+      });
+      if (res.ok) {
+        const resJson = await res.json();
+        if (resJson && resJson.url) {
+          console.log("Server-side ImgBB proxy upload succeeded:", resJson.url);
+          return resJson.url;
+        }
+      }
+    } catch (err) {
+      console.warn("Server-side ImgBB proxy upload failed, attempting client direct upload:", err);
+    }
+
+    // 2. Fall back to client-side direct upload
     const apiKey = import.meta.env.VITE_IMGBB_API_KEY;
     if (!apiKey) {
-      throw new Error("VITE_IMGBB_API_KEY is not configured.");
+      throw new Error("Neither server-side nor client-side ImgBB is configured.");
     }
 
     const formData = new FormData();
@@ -2943,6 +2964,27 @@ export default function App() {
   };
 
   const uploadVideoToSupabase = async (file: File): Promise<string> => {
+    // 1. Try server-side proxy upload first
+    try {
+      console.log("Attempting server-side Supabase video proxy upload...");
+      const fileData = await fileToBase64(file);
+      const res = await fetch("/api/upload-supabase-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, fileData, mimeType: file.type }),
+      });
+      if (res.ok) {
+        const resJson = await res.json();
+        if (resJson && resJson.url) {
+          console.log("Server-side Supabase video proxy upload succeeded:", resJson.url);
+          return resJson.url;
+        }
+      }
+    } catch (err) {
+      console.warn("Server-side Supabase video proxy upload failed, attempting client direct upload:", err);
+    }
+
+    // 2. Fall back to client-side direct upload
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 

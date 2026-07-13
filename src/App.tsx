@@ -2916,8 +2916,7 @@ export default function App() {
   };
 
   const uploadImageToImgBB = async (file: File): Promise<string> => {
-    const meta = import.meta as any;
-    const apiKey = meta.env?.VITE_IMGBB_API_KEY;
+    const apiKey = import.meta.env.VITE_IMGBB_API_KEY;
     if (!apiKey) {
       throw new Error("VITE_IMGBB_API_KEY is not configured.");
     }
@@ -2944,9 +2943,8 @@ export default function App() {
   };
 
   const uploadVideoToSupabase = async (file: File): Promise<string> => {
-    const meta = import.meta as any;
-    const supabaseUrl = meta.env?.VITE_SUPABASE_URL;
-    const supabaseAnonKey = meta.env?.VITE_SUPABASE_ANON_KEY;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
       throw new Error("Supabase is not configured. VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required.");

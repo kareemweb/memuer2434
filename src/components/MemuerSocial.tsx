@@ -331,13 +331,12 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
   // Dynamic media upload handler supporting ImgBB for images and Supabase Storage for videos with robust fallbacks
   const uploadFileInChunks = async (file: File, onProgress?: (pct: number) => void): Promise<string> => {
-    const meta = import.meta as any;
     const isImage = file.type.startsWith("image/") || /\.(png|jpg|jpeg|webp)$/i.test(file.name);
     const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(file.name);
 
     if (isImage) {
       console.log("Initiating ImgBB upload for image:", file.name);
-      const apiKey = meta.env?.VITE_IMGBB_API_KEY;
+      const apiKey = import.meta.env.VITE_IMGBB_API_KEY;
       if (!apiKey) {
         console.warn("VITE_IMGBB_API_KEY is not configured! Using local Base64 fallback.");
         return new Promise<string>((resolve, reject) => {
@@ -392,8 +391,8 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
     } else if (isVideo) {
       console.log("Initiating Supabase Storage upload for video:", file.name);
-      const supabaseUrl = meta.env?.VITE_SUPABASE_URL;
-      const supabaseAnonKey = meta.env?.VITE_SUPABASE_ANON_KEY;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       if (!supabaseUrl || !supabaseAnonKey) {
         throw new Error("Supabase is not configured! Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.");

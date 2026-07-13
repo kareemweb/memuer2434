@@ -10,6 +10,8 @@ import {
 import { 
   collection, doc, getDoc, setDoc, addDoc, updateDoc, onSnapshot, query, orderBy, limit, deleteDoc
 } from 'firebase/firestore';
+import { storage } from '../lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { 
   encryptMessage, getStoredKeyPair, generateKeyPair, storeKeyPair 
 } from '../lib/crypto';
@@ -327,8 +329,50 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
     }
   };
 
-  // Chunked upload helper function (bypasses proxy and file size upload limits completely)
+  // Chunked / Cloud Storage upload helper function (bypasses proxy and file size upload limits completely)
   const uploadFileInChunks = async (file: File, onProgress?: (pct: number) => void): Promise<string> => {
+    // 1. Try standard, highly scalable Firebase Cloud Storage first!
+    // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
+    try {
+      console.log("Initiating Cloud Storage upload for: ", file.name);
+      const storagePath = `social/${user?.uid || 'anonymous'}/${Date.now()}_${file.name}`;
+      const fileRef = ref(storage, storagePath);
+      
+      const uploadTask = uploadBytesResumable(fileRef, file);
+      
+      const url = await new Promise<string>((resolve, reject) => {
+        // Set a responsive timeout of 3 seconds for Firebase Storage to fail fast and fall back if CORS/networks are blocked
+        const timeoutId = setTimeout(() => {
+          uploadTask.cancel();
+          reject(new Error("Cloud Storage upload timed out. Attempting fallback upload pipeline..."));
+        }, 3000);
+
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            if (onProgress) onProgress(progress);
+          }, 
+          (error) => {
+            clearTimeout(timeoutId);
+            reject(error);
+          }, 
+          async () => {
+            clearTimeout(timeoutId);
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(downloadURL);
+            } catch (urlErr) {
+              reject(urlErr);
+            }
+          }
+        );
+      });
+      console.log("Cloud Storage upload succeeded: ", url);
+      return url;
+    } catch (storageErr) {
+      console.warn("Firebase Cloud Storage upload failed, attempting chunked server endpoint upload as fallback...", storageErr);
+    }
+
     const chunkSize = 1024 * 512; // 512KB chunks
     const totalChunks = Math.ceil(file.size / chunkSize);
     const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

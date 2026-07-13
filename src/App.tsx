@@ -12,7 +12,7 @@ import {
   Timestamp,
   getDocFromServer
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { ChatSession, Message as MessageType, UserProfile, FriendRequest } from './types';
 import { 
   encryptMessage, decryptMessage, getStoredKeyPair, generateKeyPair, storeKeyPair,
@@ -2922,63 +2922,94 @@ export default function App() {
       setUploading(true);
       let url = "";
 
-      // Convert file into base64 payload first
-      const fileData = await fileToBase64(file);
-
-      // 1. Try modern, highly-resilient chunked upload with retries first
+      // 1. Try standard, highly scalable Firebase Cloud Storage first!
+      // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
       try {
-        console.log("Initiating robust chunked upload for: ", file.name);
-        url = await uploadInChunksWithRetries(file, 3);
-        console.log("Successfully uploaded via chunked retry engine: ", url);
-      } catch (chunkError) {
-        console.warn("Chunked upload pipeline failed, attempting single payload endpoint fallback...", chunkError);
+        console.log("Initiating Cloud Storage upload for chat file: ", file.name);
+        const storagePath = `chats/${activeChat.id}/${Date.now()}_${file.name}`;
+        const fileRef = ref(storage, storagePath);
         
-        // 1b. Fallback: single POST to /api/upload with retry loop
-        let singleAttempt = 0;
-        const maxSingleAttempts = 3;
-        while (singleAttempt < maxSingleAttempts && !url) {
-          try {
-            const response = await fetch("/api/upload", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                filename: file.name,
-                fileData,
-                mimeType: file.type
-              })
-            });
+        const uploadTask = uploadBytesResumable(fileRef, file);
+        
+        url = await new Promise<string>((resolve, reject) => {
+          // Set a responsive timeout of 3 seconds for Firebase Storage to fail fast and fall back if CORS/networks are blocked
+          const timeoutId = setTimeout(() => {
+            uploadTask.cancel();
+            reject(new Error("Cloud Storage upload timed out. Trying fallback upload pipelines..."));
+          }, 3000);
 
-            if (response.ok) {
-              const data = await response.json();
-              if (data && data.url) {
-                url = data.url;
-                console.log("Successfully uploaded to local container via single POST: ", url);
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              console.log(`Chat file upload progress: ${progress}%`);
+            }, 
+            (error) => {
+              clearTimeout(timeoutId);
+              reject(error);
+            }, 
+            async () => {
+              clearTimeout(timeoutId);
+              try {
+                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve(downloadURL);
+              } catch (urlErr) {
+                reject(urlErr);
               }
-            } else {
-              throw new Error(`Status ${response.status}`);
             }
-          } catch (singleErr) {
-            singleAttempt++;
-            console.warn(`Single POST upload attempt ${singleAttempt} failed:`, singleErr);
-            if (singleAttempt < maxSingleAttempts) {
-              await new Promise((r) => setTimeout(r, singleAttempt * 1000));
-            }
-          }
-        }
+          );
+        });
+        console.log("Uploaded successfully via Firebase Storage: ", url);
+      } catch (storageErr) {
+        console.warn("Firebase Storage direct upload failed, attempting chunked server upload fallback...", storageErr);
       }
 
-      // 2. Fall back to Firebase Storage if server upload is unconfigured/unavailable/404
+      // Convert file into base64 payload as fallback if storage failed
+      let fileData = "";
       if (!url) {
+        fileData = await fileToBase64(file);
+
+        // 2. Try modern, highly-resilient chunked upload with retries first
         try {
-          const storagePath = `chats/${activeChat.id}/${Date.now()}_${file.name}`;
-          const fileRef = ref(storage, storagePath);
-          await withTimeout(uploadBytes(fileRef, file), 4000);
-          url = await withTimeout(getDownloadURL(fileRef), 4000);
-          console.log("Uploaded via standard Firebase storage: ", url);
-        } catch (storageErr: any) {
-          console.warn("Firebase Storage unavailable, falling back to binary data uri...", storageErr);
+          console.log("Initiating robust chunked upload for: ", file.name);
+          url = await uploadInChunksWithRetries(file, 3);
+          console.log("Successfully uploaded via chunked retry engine: ", url);
+        } catch (chunkError) {
+          console.warn("Chunked upload pipeline failed, attempting single payload endpoint fallback...", chunkError);
+          
+          // 2b. Fallback: single POST to /api/upload with retry loop
+          let singleAttempt = 0;
+          const maxSingleAttempts = 3;
+          while (singleAttempt < maxSingleAttempts && !url) {
+            try {
+              const response = await fetch("/api/upload", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  filename: file.name,
+                  fileData,
+                  mimeType: file.type
+                })
+              });
+
+              if (response.ok) {
+                const data = await response.json();
+                if (data && data.url) {
+                  url = data.url;
+                  console.log("Successfully uploaded to local container via single POST: ", url);
+                }
+              } else {
+                throw new Error(`Status ${response.status}`);
+              }
+            } catch (singleErr) {
+              singleAttempt++;
+              console.warn(`Single POST upload attempt ${singleAttempt} failed:`, singleErr);
+              if (singleAttempt < maxSingleAttempts) {
+                await new Promise((r) => setTimeout(r, singleAttempt * 1000));
+              }
+            }
+          }
         }
       }
 
@@ -3815,44 +3846,74 @@ export default function App() {
       setUploading(true);
       let photoURL = "";
 
-      // Convert image file to Base64
-      const fileData = await fileToBase64(file);
-
-      // 1. Try our high-speed, local server media proxy first (highly reliable on hosted environments)
+      // 1. Try standard, highly scalable Firebase Cloud Storage first!
+      // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
       try {
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            filename: file.name,
-            fileData,
-            mimeType: file.type
-          })
-        });
+        console.log("Initiating Cloud Storage upload for profile photo: ", file.name);
+        const storagePath = `profiles/${user.uid}/${Date.now()}_${file.name}`;
+        const fileRef = ref(storage, storagePath);
+        
+        const uploadTask = uploadBytesResumable(fileRef, file);
+        
+        photoURL = await new Promise<string>((resolve, reject) => {
+          // Set a responsive timeout of 3 seconds for profile photo uploads
+          const timeoutId = setTimeout(() => {
+            uploadTask.cancel();
+            reject(new Error("Cloud Storage upload timed out. Trying fallback upload pipelines..."));
+          }, 3000);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.url) {
-            photoURL = data.url;
-            console.log("Successfully set profile photo via local container: ", photoURL);
-          }
-        }
-      } catch (proxyError) {
-        console.warn("Express upload API failed for profile photo change, falling back...", proxyError);
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              console.log(`Profile photo upload progress: ${progress}%`);
+            }, 
+            (error) => {
+              clearTimeout(timeoutId);
+              reject(error);
+            }, 
+            async () => {
+              clearTimeout(timeoutId);
+              try {
+                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve(downloadURL);
+              } catch (urlErr) {
+                reject(urlErr);
+              }
+            }
+          );
+        });
+        console.log("Uploaded profile photo successfully via Firebase Storage: ", photoURL);
+      } catch (storageErr) {
+        console.warn("Firebase Storage direct upload failed for profile photo, attempting server proxy fallback...", storageErr);
       }
 
-      // 2. Try Firebase Storage standard pathway
+      // 2. Try our high-speed, local server media proxy fallback (highly reliable on hosted environments)
       if (!photoURL) {
+        // Convert image file to Base64
+        const fileData = await fileToBase64(file);
+
         try {
-          const storagePath = `profiles/${user.uid}/${Date.now()}_${file.name}`;
-          const fileRef = ref(storage, storagePath);
-          await withTimeout(uploadBytes(fileRef, file), 4000);
-          photoURL = await withTimeout(getDownloadURL(fileRef), 4000);
-          console.log("Uploaded profile photo via standard Firebase storage: ", photoURL);
-        } catch (storageErr: any) {
-          console.warn("Firebase Storage unavailable for profile photo change, falling back to base64 data uri...", storageErr);
+          const response = await fetch("/api/upload", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              filename: file.name,
+              fileData,
+              mimeType: file.type
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data && data.url) {
+              photoURL = data.url;
+              console.log("Successfully set profile photo via local container: ", photoURL);
+            }
+          }
+        } catch (proxyError) {
+          console.warn("Express upload API failed for profile photo change, falling back...", proxyError);
         }
       }
 
@@ -3862,6 +3923,7 @@ export default function App() {
           console.log("Compressing profile photo client-side to fit direct-sync size limit...");
           photoURL = await compressImageForDirectSync(file);
         } catch (compressErr) {
+          const fileData = await fileToBase64(file);
           if (file.size < 950 * 1024) {
             photoURL = fileData;
           } else {
@@ -3900,44 +3962,74 @@ export default function App() {
       setUploading(true);
       let bgURL = "";
 
-      // Convert image file to Base64
-      const fileData = await fileToBase64(file);
-
-      // 1. Try our high-speed, local server media proxy first (highly reliable on hosted environments)
+      // 1. Try standard, highly scalable Firebase Cloud Storage first!
+      // Since it is a client-side SDK, it bypasses custom domain's 404 proxy restrictions completely and uploads directly to Google Cloud.
       try {
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            filename: file.name,
-            fileData,
-            mimeType: file.type
-          })
-        });
+        console.log("Initiating Cloud Storage upload for custom wallpaper: ", file.name);
+        const storagePath = `wallpapers/${user.uid}/${Date.now()}_${file.name}`;
+        const fileRef = ref(storage, storagePath);
+        
+        const uploadTask = uploadBytesResumable(fileRef, file);
+        
+        bgURL = await new Promise<string>((resolve, reject) => {
+          // Set a responsive timeout of 3 seconds for custom wallpaper uploads
+          const timeoutId = setTimeout(() => {
+            uploadTask.cancel();
+            reject(new Error("Cloud Storage upload timed out. Trying fallback upload pipelines..."));
+          }, 3000);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.url) {
-            bgURL = data.url;
-            console.log("Successfully set custom wallpaper via local container: ", bgURL);
-          }
-        }
-      } catch (proxyError) {
-        console.warn("Express upload API failed for custom wallpaper, falling back...", proxyError);
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              console.log(`Wallpaper upload progress: ${progress}%`);
+            }, 
+            (error) => {
+              clearTimeout(timeoutId);
+              reject(error);
+            }, 
+            async () => {
+              clearTimeout(timeoutId);
+              try {
+                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve(downloadURL);
+              } catch (urlErr) {
+                reject(urlErr);
+              }
+            }
+          );
+        });
+        console.log("Uploaded custom wallpaper successfully via Firebase Storage: ", bgURL);
+      } catch (storageErr) {
+        console.warn("Firebase Storage direct upload failed for wallpaper, attempting server proxy fallback...", storageErr);
       }
 
-      // 2. Try Firebase Storage standard pathway
+      // 2. Try our high-speed, local server media proxy fallback (highly reliable on hosted environments)
       if (!bgURL) {
+        // Convert image file to Base64
+        const fileData = await fileToBase64(file);
+
         try {
-          const storagePath = `wallpapers/${user.uid}/${Date.now()}_${file.name}`;
-          const fileRef = ref(storage, storagePath);
-          await withTimeout(uploadBytes(fileRef, file), 4000);
-          bgURL = await withTimeout(getDownloadURL(fileRef), 4000);
-          console.log("Uploaded custom wallpaper via standard Firebase storage: ", bgURL);
-        } catch (storageErr: any) {
-          console.warn("Firebase Storage unavailable for custom wallpaper, falling back to base64 data uri...", storageErr);
+          const response = await fetch("/api/upload", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              filename: file.name,
+              fileData,
+              mimeType: file.type
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data && data.url) {
+              bgURL = data.url;
+              console.log("Successfully set custom wallpaper via local container: ", bgURL);
+            }
+          }
+        } catch (proxyError) {
+          console.warn("Express upload API failed for custom wallpaper, falling back...", proxyError);
         }
       }
 
@@ -3947,6 +4039,7 @@ export default function App() {
           console.log("Compressing wallpaper image client-side to fit direct-sync size limit...");
           bgURL = await compressImageForDirectSync(file);
         } catch (compressErr) {
+          const fileData = await fileToBase64(file);
           if (file.size < 950 * 1024) {
             bgURL = fileData;
           } else {
@@ -5866,7 +5959,7 @@ export default function App() {
                                 setMessageInput((parts.join(' ') + ' @memuer ').trimStart());
                               }
                             }}
-                            placeholder={activeChat?.id.startsWith('ai_') ? "Input neural query..." : "Type message..."} 
+                            placeholder={uploading ? "Uploading media securely to Cloud Storage..." : activeChat?.id.startsWith('ai_') ? "Input neural query..." : "Type message..."} 
                             className={cn(
                               "flex-1 bg-transparent border-none focus:ring-0 text-xs sm:text-sm py-1 sm:py-2 outline-none text-white",
                               themeName === 'liquidglass' ? 'placeholder-white/50 font-normal' : 'placeholder-indigo-300/40 font-semibold'

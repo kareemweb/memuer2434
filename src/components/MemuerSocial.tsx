@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { isDefaultSandbox } from '../lib/firebase';
 import { createClient } from '@supabase/supabase-js';
+import { useLanguage } from '../i18n/LanguageContext';
 import { 
   encryptMessage, getStoredKeyPair, generateKeyPair, storeKeyPair 
 } from '../lib/crypto';
@@ -88,6 +89,8 @@ const PRESET_SHORTS = [
 export const MemuerSocial: React.FC<MemuerSocialProps> = ({ 
   user, onClose, currentTheme, themeName, contacts = [], db, deepLinkShortId, clearDeepLink 
 }) => {
+  const { language, setLanguage } = useLanguage();
+  const isAr = language === 'ar';
   const [activeTab, setActiveTab] = useState<'feed' | 'shorts' | 'create' | 'profile'>('feed');
   const [posts, setPosts] = useState<SocialPost[]>(() => {
     const saved = localStorage.getItem('social_posts');
@@ -1410,15 +1413,22 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-black bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-400 bg-clip-text text-transparent tracking-tight">memuer | social+</span>
+          <div className="flex items-center gap-2 select-none" dir="ltr">
+            <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
+            <span className="text-xl font-black bg-gradient-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent tracking-tight font-display whitespace-nowrap">Memuer <span className="font-sans font-medium text-slate-300">Social+</span></span>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-slate-300">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-full text-xs font-bold transition-all border border-white/10 flex items-center gap-1.5"
+          >
+            <span>{isAr ? 'English' : 'العربية'}</span>
+          </button>
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-slate-300">
             <span className="w-2 h-2 bg-pink-500 rounded-full animate-ping" />
-            Live Network
+            {isAr ? 'متصل الآن' : 'Live Network'}
           </div>
         </div>
       </div>
@@ -1964,7 +1974,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
               className="bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <h3 className="text-lg font-black bg-gradient-to-r from-pink-400 to-yellow-300 bg-clip-text text-transparent uppercase tracking-wider">Publish New Content</h3>
+                <h3 className="text-lg font-black bg-gradient-to-r from-pink-400 to-yellow-300 bg-clip-text text-transparent uppercase tracking-wider">{isAr ? 'نشر محتوى جديد' : 'Publish New Content'}</h3>
                 
                 {/* Type Selection Tabs */}
                 <div className="flex gap-1 bg-white/5 rounded-xl p-1 border border-white/5">
@@ -1974,7 +1984,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       createType === 'post' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Post
+                    {isAr ? 'منشور' : 'Post'}
                   </button>
                   <button 
                     onClick={() => setCreateType('short')}
@@ -1982,7 +1992,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       createType === 'short' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Short
+                    {isAr ? 'مقطع' : 'Short'}
                   </button>
                   <button 
                     onClick={() => setCreateType('story')}
@@ -1990,7 +2000,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       createType === 'story' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Story
+                    {isAr ? 'قصة' : 'Story'}
                   </button>
                 </div>
               </div>
@@ -2000,7 +2010,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                 <div className="space-y-4">
                   {/* Select Template Image */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Choose Image Template</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'اختر قالب صورة' : 'Choose Image Template'}</label>
                     <div className="grid grid-cols-5 gap-2">
                       {PRESET_IMAGES.map((img, idx) => (
                         <button
@@ -2018,7 +2028,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Real File Upload */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Upload Real Photo</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'رفع صورة حقيقية' : 'Upload Real Photo'}</label>
                     <div className="relative border-2 border-dashed border-white/15 rounded-2xl p-6 hover:border-pink-500/50 transition-colors flex flex-col items-center justify-center gap-2 bg-white/5">
                       <input 
                         type="file" 
@@ -2030,7 +2040,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       {uploading ? (
                         <div className="flex flex-col items-center gap-2">
                           <span className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-[10px] font-bold text-slate-400">Uploading to server ({uploadProgress}%)...</span>
+                          <span className="text-[10px] font-bold text-slate-400">{isAr ? `جاري الرفع إلى الخادم (${uploadProgress}%)...` : `Uploading to server (${uploadProgress}%)...`}</span>
                         </div>
                       ) : imageUrlInput ? (
                         <div className="flex flex-col items-center gap-2 text-center">
@@ -2038,14 +2048,14 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                             <img src={imageUrlInput} className="w-full h-full object-cover" />
                           </div>
                           <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" /> Uploaded Successfully!
+                            <Check className="w-3.5 h-3.5" /> {isAr ? 'تم الرفع بنجاح!' : 'Uploaded Successfully!'}
                           </span>
                         </div>
                       ) : (
                         <>
                           <Camera className="w-8 h-8 text-slate-400" />
-                          <span className="text-xs font-bold text-slate-300">Drag & drop or click to upload photo</span>
-                          <span className="text-[9px] text-slate-500">Supports PNG, JPG, WEBP</span>
+                          <span className="text-xs font-bold text-slate-300">{isAr ? 'اسحب واسقط أو انقر لرفع صورة' : 'Drag & drop or click to upload photo'}</span>
+                          <span className="text-[9px] text-slate-500">{isAr ? 'يدعم صيغ PNG, JPG, WEBP' : 'Supports PNG, JPG, WEBP'}</span>
                         </>
                       )}
                     </div>
@@ -2058,7 +2068,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Or input custom image URL */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Or Paste Image URL</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'أو أدخل رابط الصورة' : 'Or Paste Image URL'}</label>
                     <div className="flex items-center gap-2">
                       <input 
                         type="text" 
@@ -2072,9 +2082,9 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Caption */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Caption</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'الشرح / التعليق' : 'Caption'}</label>
                     <textarea 
-                      placeholder="Write your amazing post caption..." 
+                      placeholder={isAr ? "اكتب الشرح لمنشورك..." : "Write your amazing post caption..."} 
                       rows={3}
                       value={captionInput}
                       onChange={(e) => setCaptionInput(e.target.value)}
@@ -2084,10 +2094,10 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Location */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Location</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'الموقع الجغرافي' : 'Location'}</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Giza, Egypt" 
+                      placeholder={isAr ? "مثال: الجيزة، مصر" : "e.g. Giza, Egypt"} 
                       value={locationInput}
                       onChange={(e) => setLocationInput(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 transition-colors"
@@ -2101,7 +2111,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                 <div className="space-y-4">
                   {/* Select Video Template */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Select Video Template</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'اختر قالب فيديو' : 'Select Video Template'}</label>
                     <div className="grid grid-cols-4 gap-2">
                       {PRESET_SHORTS.map((video, idx) => (
                         <button
@@ -2121,7 +2131,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Real File Upload */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Upload Real Video</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'رفع فيديو حقيقي' : 'Upload Real Video'}</label>
                     <div className="relative border-2 border-dashed border-white/15 rounded-2xl p-6 hover:border-pink-500/50 transition-colors flex flex-col items-center justify-center gap-2 bg-white/5">
                       <input 
                         type="file" 
@@ -2133,20 +2143,20 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       {uploading ? (
                         <div className="flex flex-col items-center gap-2">
                           <span className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-[10px] font-bold text-slate-400">Uploading to server ({uploadProgress}%)...</span>
+                          <span className="text-[10px] font-bold text-slate-400">{isAr ? `جاري الرفع إلى الخادم (${uploadProgress}%)...` : `Uploading to server (${uploadProgress}%)...`}</span>
                         </div>
                       ) : videoUrlInput ? (
                         <div className="flex flex-col items-center gap-2 text-center">
                           <video src={videoUrlInput} className="w-20 h-20 rounded-lg overflow-hidden border border-pink-500/30 object-cover bg-black" muted />
                           <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" /> Uploaded Successfully!
+                            <Check className="w-3.5 h-3.5" /> {isAr ? 'تم الرفع بنجاح!' : 'Uploaded Successfully!'}
                           </span>
                         </div>
                       ) : (
                         <>
                           <Video className="w-8 h-8 text-slate-400" />
-                          <span className="text-xs font-bold text-slate-300">Drag & drop or click to upload MP4 video</span>
-                          <span className="text-[9px] text-slate-500">Supports MP4, WebM</span>
+                          <span className="text-xs font-bold text-slate-300">{isAr ? 'اسحب واسقط أو انقر لرفع فيديو MP4' : 'Drag & drop or click to upload MP4 video'}</span>
+                          <span className="text-[9px] text-slate-500">{isAr ? 'يدعم صيغ MP4, WebM' : 'Supports MP4, WebM'}</span>
                         </>
                       )}
                     </div>
@@ -2159,7 +2169,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Custom Video URL */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Or Paste Video MP4 URL</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'أو أدخل رابط فيديو MP4' : 'Or Paste Video MP4 URL'}</label>
                     <input 
                       type="text" 
                       placeholder="https://player.vimeo.com/external/..." 
@@ -2171,10 +2181,10 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Caption */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Caption</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'الشرح / التعليق' : 'Caption'}</label>
                     <input 
                       type="text" 
-                      placeholder="Describe your loop short..." 
+                      placeholder={isAr ? "صف مقطع الفيديو الخاص بك..." : "Describe your loop short..."} 
                       value={captionInput}
                       onChange={(e) => setCaptionInput(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 transition-colors"
@@ -2183,10 +2193,10 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Music Track */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Music Title</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'اسم المقطع الموسيقي' : 'Music Title'}</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Summer Lounge - LoFi Beats" 
+                      placeholder={isAr ? "مثال: موسيقى هادئة - نغمات لوفي" : "e.g. Summer Lounge - LoFi Beats"} 
                       value={musicInput}
                       onChange={(e) => setMusicInput(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 transition-colors"
@@ -2200,7 +2210,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                 <div className="space-y-4">
                   {/* Select Story Background Gradient */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Select Background Gradient</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'اختر خلفية ملونة' : 'Select Background Gradient'}</label>
                     <div className="grid grid-cols-5 gap-2">
                       {GRADIENTS.map((gradient, idx) => (
                         <button
@@ -2216,10 +2226,10 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Story Text Overlay */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Story Text Overlay</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'النص الظاهر على القصة' : 'Story Text Overlay'}</label>
                     <input 
                       type="text" 
-                      placeholder="What is happening? e.g. Exploring Cairo! 🏜️" 
+                      placeholder={isAr ? "ماذا يحدث الآن؟ مثال: جولة في القاهرة! 🏜️" : "What is happening? e.g. Exploring Cairo! 🏜️"} 
                       value={storyTextInput}
                       onChange={(e) => setStoryTextInput(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 transition-colors"
@@ -2228,7 +2238,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                   {/* Visual Live Story Preview Card */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Story Live Preview</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'معاينة مباشرة للقصة' : 'Story Live Preview'}</label>
                     <div className={`w-full max-w-xs mx-auto aspect-[9/16] rounded-2xl bg-gradient-to-tr ${GRADIENTS[storyGradientIndex]} flex flex-col items-center justify-center p-6 text-center relative border border-white/20 shadow-2xl overflow-hidden`}>
                       {/* Fake progress bar */}
                       <div className="absolute top-3 left-3 right-3 h-0.5 bg-white/25 rounded-full overflow-hidden">
@@ -2244,7 +2254,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       </div>
 
                       <p className="text-sm font-black text-white px-4 leading-relaxed drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                        {storyTextInput || "Hello world! 👋"}
+                        {storyTextInput || (isAr ? "مرحباً بكم! 👋" : "Hello world! 👋")}
                       </p>
                     </div>
                   </div>
@@ -2257,7 +2267,10 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                 className="w-full py-3 bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 hover:opacity-90 active:scale-[0.98] text-xs font-black uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-pink-500/10 flex items-center justify-center gap-2"
               >
                 <Sparkles className="w-4 h-4 text-white" />
-                Publish {createType === 'post' ? 'Post' : createType === 'short' ? 'Short Video' : 'Story'}
+                {isAr 
+                  ? `نشر ${createType === 'post' ? 'المنشور' : createType === 'short' ? 'مقطع الفيديو' : 'القصة'}`
+                  : `Publish ${createType === 'post' ? 'Post' : createType === 'short' ? 'Short Video' : 'Story'}`
+                }
               </button>
             </motion.div>
           </div>
@@ -2294,7 +2307,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       className="px-4 py-1.5 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all cursor-pointer inline-flex items-center gap-1.5 mx-auto sm:mx-0"
                     >
                       <Edit3 className="w-3 h-3 text-pink-400" />
-                      Edit Profile
+                      {isAr ? 'تعديل الملف الشخصي' : 'Edit Profile'}
                     </button>
                   </div>
 
@@ -2307,17 +2320,17 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       <span className="font-black text-white text-sm mr-1">
                         {posts.filter(p => p.username === displayName.toLowerCase().replace(/\s+/g, '.')).length}
                       </span>
-                      posts
+                      {isAr ? 'منشورات' : 'posts'}
                     </div>
                     <div>
                       <span className="font-black text-white text-sm mr-1">
                         {shorts.filter(s => s.username === displayName.toLowerCase().replace(/\s+/g, '.')).length}
                       </span>
-                      shorts
+                      {isAr ? 'مقاطع' : 'shorts'}
                     </div>
                     <div>
                       <span className="font-black text-white text-sm mr-1">{followerCount}</span>
-                      followers
+                      {isAr ? 'المتابعين' : 'followers'}
                     </div>
                   </div>
 
@@ -2334,14 +2347,14 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                   className="py-2.5 bg-gradient-to-tr from-pink-600/30 to-purple-600/30 border border-pink-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-200 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
                 >
                   <Camera className="w-3.5 h-3.5 text-pink-400" />
-                  Post Photo
+                  {isAr ? 'نشر صورة' : 'Post Photo'}
                 </button>
                 <button 
                   onClick={() => { setCreateType('short'); setActiveTab('create'); }}
                   className="py-2.5 bg-gradient-to-tr from-cyan-600/30 to-blue-600/30 border border-cyan-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-200 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
                 >
                   <Video className="w-3.5 h-3.5 text-cyan-400" />
-                  Post m short
+                  {isAr ? 'نشر مقطع' : 'Post m short'}
                 </button>
               </div>
             </div>
@@ -2358,7 +2371,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                   }`}
                 >
                   <Grid className="w-4 h-4" />
-                  Photos Grid
+                  {isAr ? 'شبكة الصور' : 'Photos Grid'}
                 </button>
                 <button 
                   onClick={() => setProfileSubTab('shorts')}
@@ -2369,7 +2382,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                   }`}
                 >
                   <Tv className="w-4 h-4" />
-                  m shorts
+                  {isAr ? 'مقاطع الفيديو' : 'm shorts'}
                 </button>
                 <button 
                   onClick={() => setProfileSubTab('playlists')}
@@ -2380,7 +2393,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                   }`}
                 >
                   <Bookmark className="w-4 h-4" />
-                  Playlists
+                  {isAr ? 'قوائم التشغيل' : 'Playlists'}
                 </button>
               </div>
 
@@ -2403,7 +2416,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                 ) : (
                   <div className="text-center py-10 bg-white/5 border border-white/10 rounded-3xl space-y-3">
                     <Image className="w-8 h-8 text-slate-600 mx-auto" />
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No Photos Published Yet</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'لا توجد صور منشورة بعد' : 'No Photos Published Yet'}</p>
                   </div>
                 )
               ) : profileSubTab === 'shorts' ? (
@@ -2429,11 +2442,11 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                           <div className="absolute inset-0 bg-black/40 flex items-end p-2">
                             <span className="text-[9px] font-black text-white flex items-center gap-1">
                               <Tv className="w-3 h-3 text-pink-500" />
-                              {s.likes} likes
+                              {s.likes} {isAr ? 'إعجاب' : 'likes'}
                             </span>
                           </div>
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-xs font-black">
-                            <span className="text-white uppercase tracking-widest text-[9px]">Play Short</span>
+                            <span className="text-white uppercase tracking-widest text-[9px]">{isAr ? 'تشغيل المقطع' : 'Play Short'}</span>
                           </div>
                         </div>
                       ))}
@@ -2441,7 +2454,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                 ) : (
                   <div className="text-center py-10 bg-white/5 border border-white/10 rounded-3xl space-y-3">
                     <Video className="w-8 h-8 text-slate-600 mx-auto" />
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No m shorts Published Yet</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'لا توجد مقاطع فيديو منشورة بعد' : 'No m shorts Published Yet'}</p>
                   </div>
                 )
               ) : (
@@ -2455,21 +2468,21 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                           onClick={() => setSelectedPlaylistIdForView(null)}
                           className="px-3 py-1.5 bg-white/10 hover:bg-white/15 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1.5 transition-all cursor-pointer"
                         >
-                          <ArrowLeft className="w-3.5 h-3.5" /> Back
+                          <ArrowLeft className="w-3.5 h-3.5" /> {isAr ? 'الرجوع' : 'Back'}
                         </button>
                         <h3 className="text-sm font-black text-white tracking-wide uppercase">{selectedPlaylistForView.name}</h3>
                         <button 
                           onClick={() => handleDeletePlaylist(selectedPlaylistForView.id)}
                           className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center gap-1.5 transition-all cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" /> Delete
+                          <Trash2 className="w-3.5 h-3.5" /> {isAr ? 'حذف' : 'Delete'}
                         </button>
                       </div>
 
                       {(!selectedPlaylistForView.items || selectedPlaylistForView.items.length === 0) ? (
                         <div className="text-center py-10 space-y-2">
                           <Bookmark className="w-8 h-8 text-slate-600 mx-auto" />
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">This Playlist Is Empty</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'قائمة التشغيل هذه فارغة' : 'This Playlist Is Empty'}</p>
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 gap-3">
@@ -2504,7 +2517,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                                   }}
                                   className="flex-1 py-1.5 bg-white/10 hover:bg-white/15 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-200 text-center cursor-pointer transition-all"
                                 >
-                                  View
+                                  {isAr ? 'عرض' : 'View'}
                                 </button>
                                 <button 
                                   onClick={() => handleRemoveFromPlaylist(selectedPlaylistForView.id, item.id)}
@@ -2526,7 +2539,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       <div className="bg-white/5 border border-white/10 p-4 rounded-3xl flex gap-2 items-center">
                         <input 
                           type="text" 
-                          placeholder="New Playlist Name..." 
+                          placeholder={isAr ? "اسم قائمة التشغيل الجديدة..." : "New Playlist Name..."} 
                           value={newPlaylistName}
                           onChange={(e) => setNewPlaylistName(e.target.value)}
                           className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 transition-colors"
@@ -2538,15 +2551,15 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                           }}
                           className="px-4 py-1.5 bg-pink-500 hover:bg-pink-600 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
                         >
-                          <PlusSquare className="w-3.5 h-3.5" /> Create
+                          <PlusSquare className="w-3.5 h-3.5" /> {isAr ? 'إنشاء' : 'Create'}
                         </button>
                       </div>
 
                       {playlists.length === 0 ? (
                         <div className="text-center py-10 bg-white/5 border border-white/10 rounded-3xl space-y-3">
                           <Bookmark className="w-8 h-8 text-slate-600 mx-auto animate-pulse" />
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No Playlists Created Yet</p>
-                          <p className="text-[9px] text-slate-500">Create one above or save items from the feed!</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isAr ? 'لا توجد قوائم تشغيل حتى الآن' : 'No Playlists Created Yet'}</p>
+                          <p className="text-[9px] text-slate-500">{isAr ? 'أنشئ قائمة أعلاه أو احفظ العناصر من الخلاصة!' : 'Create one above or save items from the feed!'}</p>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 gap-2.5">
@@ -2562,11 +2575,11 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                                 </div>
                                 <div className="text-left">
                                   <h4 className="text-xs font-black text-white tracking-wide uppercase">{playlist.name}</h4>
-                                  <p className="text-[9px] text-slate-400">{(playlist.items || []).length} items saved</p>
+                                  <p className="text-[9px] text-slate-400">{(playlist.items || []).length} {isAr ? 'عنصر محفوظ' : 'items saved'}</p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[9px] font-black uppercase tracking-widest text-pink-500 opacity-0 group-hover:opacity-100 transition-opacity">Open &rarr;</span>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-pink-500 opacity-0 group-hover:opacity-100 transition-opacity">{isAr ? 'فتح ←' : 'Open →'}</span>
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -2697,7 +2710,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
               className="bg-slate-900 border border-white/15 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h4 className="text-sm font-black uppercase tracking-widest text-white">Edit Social Profile</h4>
+                <h4 className="text-sm font-black uppercase tracking-widest text-white">{isAr ? 'تعديل الملف الشخصي' : 'Edit Social Profile'}</h4>
                 <button onClick={() => setIsEditingProfile(false)} className="text-slate-400 hover:text-white p-1">
                   <X className="w-4 h-4" />
                 </button>
@@ -2712,7 +2725,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                   
                   <div className="w-full text-center">
                     <label className="inline-block px-3 py-1.5 bg-gradient-to-r from-pink-500 to-yellow-500 hover:from-pink-600 hover:to-yellow-600 active:scale-95 text-[10px] font-black uppercase tracking-wider text-white rounded-lg cursor-pointer transition-all shadow-md shadow-pink-500/10">
-                      Upload New Photo
+                      {isAr ? 'رفع صورة جديدة' : 'Upload New Photo'}
                       <input 
                         type="file" 
                         accept="image/*" 
@@ -2736,14 +2749,14 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                       />
                     </label>
                     {uploadingProfilePic && (
-                      <p className="text-[9px] text-pink-400 font-bold mt-1.5 animate-pulse">Uploading photo...</p>
+                      <p className="text-[9px] text-pink-400 font-bold mt-1.5 animate-pulse">{isAr ? 'جاري رفع الصورة...' : 'Uploading photo...'}</p>
                     )}
                   </div>
                 </div>
 
                 {/* Profile Pic URL */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Profile Picture URL</label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">{isAr ? 'رابط الصورة الشخصية' : 'Profile Picture URL'}</label>
                   <input 
                     type="text" 
                     value={tempPic} 
@@ -2754,7 +2767,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                 {/* Name */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Display Name</label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">{isAr ? 'الاسم المعروض' : 'Display Name'}</label>
                   <input 
                     type="text" 
                     value={tempName} 
@@ -2765,7 +2778,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
 
                 {/* Bio */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Bio</label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">{isAr ? 'السيرة الذاتية (البايو)' : 'Bio'}</label>
                   <textarea 
                     value={tempBio} 
                     onChange={(e) => setTempBio(e.target.value)} 
@@ -2780,13 +2793,13 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
                   onClick={() => setIsEditingProfile(false)}
                   className="flex-1 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-300 hover:bg-white/10"
                 >
-                  Cancel
+                  {isAr ? 'إلغاء' : 'Cancel'}
                 </button>
                 <button 
                   onClick={handleSaveProfile}
                   className="flex-1 py-2 bg-pink-500 hover:bg-pink-600 rounded-xl text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-pink-500/20"
                 >
-                  Save Changes
+                  {isAr ? 'حفظ التغييرات' : 'Save Changes'}
                 </button>
               </div>
             </motion.div>
@@ -3185,7 +3198,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
           }`}
         >
           <Compass className="w-5 h-5" />
-          <span className="text-[8px] font-black uppercase tracking-widest">Feed</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">{isAr ? 'الرئيسية' : 'Feed'}</span>
         </button>
 
         {/* m shorts */}
@@ -3196,7 +3209,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
           }`}
         >
           <Tv className="w-5 h-5" />
-          <span className="text-[8px] font-black uppercase tracking-widest">m shorts</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">{isAr ? 'مقاطع' : 'Shorts'}</span>
         </button>
 
         {/* Publish / Create */}
@@ -3207,7 +3220,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
           }`}
         >
           <PlusSquare className="w-5 h-5" />
-          <span className="text-[8px] font-black uppercase tracking-widest">Create</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">{isAr ? 'إنشاء' : 'Create'}</span>
         </button>
 
         {/* Profile */}
@@ -3218,7 +3231,7 @@ export const MemuerSocial: React.FC<MemuerSocialProps> = ({
           }`}
         >
           <User className="w-5 h-5" />
-          <span className="text-[8px] font-black uppercase tracking-widest">Profile</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">{isAr ? 'الملف الشخصي' : 'Profile'}</span>
         </button>
       </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, Users, Settings, Plus, Search, Phone, Video, Shield, Info, Paperclip, Smile, Send, MoveVertical as MoreVertical, LogOut, User, Camera, Image as ImageIcon, Check, X, Menu, PhoneOff, Mic, MicOff, VideoOff, Volume2, VolumeX, UserX, Copy, Lock, ArrowLeft, ArrowRight, MonitorUp, TriangleAlert as AlertTriangle, FileSliders as Sliders, Wrench, Clock, Archive, Radio, RefreshCw, Mail, ShieldAlert, ShieldCheck, Pin, Eye, EyeOff, Sparkles, Play, MapPin, History } from 'lucide-react';
+import { MessageSquare, Users, Settings, Plus, Search, Phone, Video, Shield, Info, Paperclip, Smile, Send, MoveVertical as MoreVertical, LogOut, User, Camera, Image as ImageIcon, Check, X, Menu, PhoneOff, Mic, MicOff, VideoOff, Volume2, VolumeX, UserX, Copy, Lock, ArrowLeft, ArrowRight, MonitorUp, TriangleAlert as AlertTriangle, FileSliders as Sliders, Wrench, Clock, Archive, Radio, RefreshCw, Mail, ShieldAlert, ShieldCheck, Pin, Eye, EyeOff, Sparkles, Play, MapPin, History, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useLanguage } from './i18n/LanguageContext';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { useAuth } from './hooks/useAuth';
 import { usePeer } from './hooks/usePeer';
@@ -187,6 +188,9 @@ export default function App() {
     resetPassword, resetEmailSent 
   } = useAuth();
 
+  const { language, setLanguage, t, isRTL, dir } = useLanguage();
+  const isAr = language === 'ar';
+
   const isWcThemeActive = false;
 
   const themeStyles: Record<string, {
@@ -204,88 +208,88 @@ export default function App() {
     inputRing: string;
   }> = {
     vibrant: {
-      bg: "bg-gradient-to-br from-indigo-900 via-purple-900 via-pink-900 to-fuchsia-950",
-      sidebar: "lg:bg-indigo-800/40",
-      sidebarMobile: "bg-indigo-900/95",
-      rail: "bg-black/20",
-      tabChats: "bg-indigo-600",
-      tabDirectory: "bg-cyan-600",
-      tabSignals: "bg-pink-600",
-      accentText: "text-indigo-300",
-      accentBg: "bg-indigo-600/40",
-      bubbleMe: "bg-indigo-600/40 border-indigo-400/30 text-indigo-50",
-      bubbleOther: "bg-white/5 border-white/10 text-indigo-50",
-      inputRing: "ring-pink-500/30"
+      bg: "bg-[#0B0C10]",
+      sidebar: "lg:bg-white/5 border-r border-white/10 backdrop-blur-3xl",
+      sidebarMobile: "bg-[#0B0C10]/95 backdrop-blur-3xl",
+      rail: "bg-black/40 border-r border-white/5 backdrop-blur-md",
+      tabChats: "bg-blue-500",
+      tabDirectory: "bg-indigo-500",
+      tabSignals: "bg-purple-500",
+      accentText: "text-blue-400",
+      accentBg: "bg-blue-500/10 border border-blue-500/20",
+      bubbleMe: "bg-blue-600/80 border border-blue-400/30 text-white shadow-[0_4px_24px_rgba(59,130,246,0.3)] backdrop-blur-xl rounded-2xl rounded-br-sm",
+      bubbleOther: "bg-white/10 border border-white/10 text-slate-100 shadow-xl backdrop-blur-xl rounded-2xl rounded-bl-sm",
+      inputRing: "ring-blue-500/40"
     },
     midnight: {
-      bg: "bg-gradient-to-br from-slate-950 via-slate-900 via-indigo-950 to-blue-950",
-      sidebar: "lg:bg-slate-900/40",
-      sidebarMobile: "bg-slate-950/95",
-      rail: "bg-black/40",
-      tabChats: "bg-slate-600",
-      tabDirectory: "bg-indigo-600",
-      tabSignals: "bg-slate-500",
-      accentText: "text-slate-300",
-      accentBg: "bg-slate-800/40",
-      bubbleMe: "bg-slate-800/60 border-slate-700/40 text-slate-50",
-      bubbleOther: "bg-white/5 border-white/10 text-slate-50",
-      inputRing: "ring-slate-500/30"
+      bg: "bg-[#040509]",
+      sidebar: "lg:bg-[#080B13]/60 border-r border-white/5 backdrop-blur-3xl",
+      sidebarMobile: "bg-[#040509]/98 backdrop-blur-3xl",
+      rail: "bg-[#020306]/80 border-r border-white/5",
+      tabChats: "bg-cyan-500",
+      tabDirectory: "bg-teal-500",
+      tabSignals: "bg-emerald-500",
+      accentText: "text-cyan-400",
+      accentBg: "bg-cyan-500/10 border border-cyan-500/20",
+      bubbleMe: "bg-cyan-600/30 border border-cyan-500/30 text-cyan-50 shadow-[0_4px_30px_rgba(6,182,212,0.2)] backdrop-blur-xl rounded-2xl rounded-br-sm",
+      bubbleOther: "bg-slate-800/40 border border-white/5 text-slate-100 shadow-xl backdrop-blur-xl rounded-2xl rounded-bl-sm",
+      inputRing: "ring-cyan-500/30"
     },
     forest: {
-      bg: "bg-gradient-to-br from-emerald-950 via-teal-900 via-green-950 to-emerald-900",
-      sidebar: "lg:bg-emerald-900/40",
-      sidebarMobile: "bg-emerald-950/95",
-      rail: "bg-black/30",
-      tabChats: "bg-emerald-600",
-      tabDirectory: "bg-teal-600",
-      tabSignals: "bg-green-600",
-      accentText: "text-emerald-300",
-      accentBg: "bg-emerald-800/40",
-      bubbleMe: "bg-emerald-800/60 border-emerald-700/40 text-emerald-50",
-      bubbleOther: "bg-white/5 border-white/10 text-emerald-50",
+      bg: "bg-[#050D0A]",
+      sidebar: "lg:bg-[#0A1712]/60 border-r border-emerald-500/10 backdrop-blur-3xl",
+      sidebarMobile: "bg-[#050D0A]/95 backdrop-blur-3xl",
+      rail: "bg-black/60 border-r border-emerald-500/5",
+      tabChats: "bg-emerald-500",
+      tabDirectory: "bg-green-500",
+      tabSignals: "bg-teal-500",
+      accentText: "text-emerald-400",
+      accentBg: "bg-emerald-500/10 border border-emerald-500/20",
+      bubbleMe: "bg-emerald-600/30 border border-emerald-500/30 text-emerald-50 shadow-[0_4px_30px_rgba(16,185,129,0.15)] backdrop-blur-xl rounded-2xl rounded-br-sm",
+      bubbleOther: "bg-white/5 border border-white/5 text-emerald-100 shadow-xl backdrop-blur-xl rounded-2xl rounded-bl-sm",
       inputRing: "ring-emerald-500/30"
     },
     crimson: {
-      bg: "bg-gradient-to-br from-rose-950 via-red-950 via-orange-950 to-rose-900",
-      sidebar: "lg:bg-rose-900/40",
-      sidebarMobile: "bg-rose-950/95",
-      rail: "bg-black/30",
-      tabChats: "bg-rose-600",
-      tabDirectory: "bg-red-600",
-      tabSignals: "bg-orange-600",
-      accentText: "text-rose-300",
-      accentBg: "bg-rose-800/40",
-      bubbleMe: "bg-rose-800/60 border-rose-700/40 text-rose-50",
-      bubbleOther: "bg-white/5 border-white/10 text-rose-50",
+      bg: "bg-[#110505]",
+      sidebar: "lg:bg-[#1A0A0A]/60 border-r border-rose-500/10 backdrop-blur-3xl",
+      sidebarMobile: "bg-[#110505]/95 backdrop-blur-3xl",
+      rail: "bg-black/60 border-r border-rose-500/5",
+      tabChats: "bg-rose-500",
+      tabDirectory: "bg-red-500",
+      tabSignals: "bg-orange-500",
+      accentText: "text-rose-400",
+      accentBg: "bg-rose-500/10 border border-rose-500/20",
+      bubbleMe: "bg-rose-600/30 border border-rose-500/30 text-rose-50 shadow-[0_4px_30px_rgba(244,63,94,0.15)] backdrop-blur-xl rounded-2xl rounded-br-sm",
+      bubbleOther: "bg-white/5 border border-white/5 text-rose-100 shadow-xl backdrop-blur-xl rounded-2xl rounded-bl-sm",
       inputRing: "ring-rose-500/30"
     },
     liquidglass: {
-      bg: "bg-gradient-to-br from-[#0c242c] via-[#083842] via-[#2d1b42] to-[#120a2e]",
-      sidebar: "lg:bg-teal-950/30 border-r border-teal-500/10",
-      sidebarMobile: "bg-teal-950/95",
-      rail: "bg-black/40",
-      tabChats: "bg-teal-600",
-      tabDirectory: "bg-cyan-600",
-      tabSignals: "bg-purple-600",
-      accentText: "text-cyan-400",
-      accentBg: "bg-cyan-500/20",
-      bubbleMe: "bg-gradient-to-br from-cyan-600 to-teal-600 border border-cyan-400/30 text-white shadow-md shadow-cyan-500/15",
-      bubbleOther: "bg-white/10 border border-white/15 text-teal-100 shadow-md shadow-black/10",
-      inputRing: "ring-teal-500/30"
+      bg: "bg-[#09090b]",
+      sidebar: "lg:liquid-glass-panel border-r-0 rounded-none rounded-r-[32px] my-2 mr-2",
+      sidebarMobile: "bg-[#09090b]/95 backdrop-blur-3xl",
+      rail: "bg-transparent",
+      tabChats: "bg-violet-500",
+      tabDirectory: "bg-fuchsia-500",
+      tabSignals: "bg-pink-500",
+      accentText: "text-violet-400",
+      accentBg: "bg-violet-500/15 border border-violet-500/20",
+      bubbleMe: "liquid-glass-bubble-ai",
+      bubbleOther: "liquid-glass-bubble-other",
+      inputRing: "ring-violet-500/30"
     },
     luxury: {
       bg: "bg-luxury text-amber-50",
-      sidebar: "lg:bg-[#0c0c0c]/90 border-r border-amber-500/20",
-      sidebarMobile: "bg-[#080808]/98 border-r border-amber-500/20",
-      rail: "bg-[#050505]/80 border-r border-amber-500/10",
+      sidebar: "lg:luxury-panel border-r-0 rounded-none rounded-r-[36px] my-4 mr-4",
+      sidebarMobile: "bg-[#050505]/98 border-r border-amber-500/20 backdrop-blur-3xl",
+      rail: "bg-transparent",
       tabChats: "bg-amber-600 text-amber-950 font-bold",
       tabDirectory: "bg-amber-700 text-amber-50 font-bold",
       tabSignals: "bg-yellow-600 text-amber-950 font-bold",
       accentText: "text-amber-400",
       accentBg: "bg-amber-500/10 border border-amber-500/20 text-amber-400",
-      bubbleMe: "bg-gradient-to-br from-amber-600 to-yellow-600 border border-amber-400/40 text-black font-medium shadow-lg shadow-amber-500/10",
-      bubbleOther: "bg-[#141414]/90 border border-amber-500/20 text-amber-100 shadow-md",
-      inputRing: "ring-amber-500/30"
+      bubbleMe: "bg-gradient-to-br from-amber-600/40 to-yellow-600/40 border border-amber-400/40 text-[#fcfbf8] font-medium shadow-lg shadow-amber-500/10 backdrop-blur-xl rounded-2xl rounded-br-sm",
+      bubbleOther: "bg-[#141414]/90 border border-amber-500/20 text-amber-100 shadow-md backdrop-blur-xl rounded-2xl rounded-bl-sm",
+      inputRing: "ring-amber-500/40"
     }
   };
 
@@ -1240,7 +1244,44 @@ export default function App() {
   const [reactingTo, setReactingTo] = useState<string | null>(null);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
 
-  const UPDATES = [
+  const UPDATES = isAr ? [
+    {
+      title: "الضغط التكيفي وتشفير الطرفين",
+      description: "إضافة ضغط الصور تلقائياً وتحسين رفع الوسائط دون أي انقطاع مع ضمان الحماية والتشفير الكامل.",
+      icon: <RefreshCw className="w-5 h-5 text-emerald-400 animate-spin" />,
+      date: "يوليو 2026"
+    },
+    {
+      title: "قوائم التشغيل في Social+",
+      description: "تنظيم وحفظ منشورات المقاطع المفضلة لديك في قوائم تشغيل مخصصة وإدارتها بسهولة من ملفك الشخصي.",
+      icon: <Play className="w-5 h-5 text-pink-400" />,
+      date: "يوليو 2026"
+    },
+    {
+      title: "نظام البلاغات والإشراف",
+      description: "لوحة تحكم إدارية مدمجة لمراجعة المحتوى والشيوع وإدارة البلاغات بأمان وسرعة عالية.",
+      icon: <ShieldAlert className="w-5 h-5 text-red-400 animate-pulse" />,
+      date: "يوليو 2026"
+    },
+    {
+      title: "أرشيف السجلات والأمان",
+      description: "سجل أمان دائم يسجل كافة عمليات الإشراف والحماية مع توثيق زمني دقيق.",
+      icon: <History className="w-5 h-5 text-cyan-400" />,
+      date: "يوليو 2026"
+    },
+    {
+      title: "أرشيف المحادثات",
+      description: "إمكانية إخفاء وأرشفة المحادثات الجانبية بسهولة والوصول إليها مجدداً في أي وقت بنقرة واحدة.",
+      icon: <Archive className="w-5 h-5 text-indigo-400" />,
+      date: "يونيو 2026"
+    },
+    {
+      title: "تحسينات الواجهة للهواتف",
+      description: "تحسين التجاوب للهواتف الذكية مع ضبط النصوص والتوجيه التلقائي للغة العربية والإنجليزية.",
+      icon: <Wrench className="w-5 h-5 text-amber-400" />,
+      date: "يونيو 2026"
+    }
+  ] : [
     {
       title: "Adaptive Compression & E2EE Fallback",
       description: "Added real-time client-side image compression via canvas and automatic Base64 direct-sync upload fallback. Safeguards and guarantees that your media uploads never fail, even on static custom hosting or when server upload endpoints return 404.",
@@ -4177,17 +4218,35 @@ export default function App() {
         )}
         <div className="flex flex-col items-center gap-4 relative z-10">
           <div className={cn(
-            "w-16 h-16 rounded-2xl flex items-center justify-center animate-pulse",
+            "w-16 h-16 rounded-[20px] flex items-center justify-center animate-pulse",
             themeName === 'luxury' 
               ? "bg-[#141414]/90 border border-amber-500/30 shadow-[0_0_20px_rgba(212,175,55,0.2)]" 
-              : "bg-gradient-to-tr from-pink-500 to-yellow-500"
+              : themeName === 'liquidglass'
+              ? "liquid-glass-input shadow-[0_0_30px_rgba(255,255,255,0.15)]"
+              : themeName === 'midnight'
+              ? "bg-slate-900/80 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
+              : themeName === 'forest'
+              ? "bg-emerald-950/80 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+              : themeName === 'crimson'
+              ? "bg-rose-950/80 border border-rose-500/30 shadow-[0_0_20px_rgba(244,63,94,0.2)]"
+              : "bg-white/5 border border-white/10 backdrop-blur-xl shadow-2xl"
           )}>
-            <span className={cn("font-black text-2xl", themeName === 'luxury' ? "text-amber-400" : "text-white")}>M</span>
+            <Sparkles className={cn("w-8 h-8", 
+              themeName === 'luxury' ? "text-amber-400" :
+              themeName === 'midnight' ? "text-cyan-400" :
+              themeName === 'forest' ? "text-emerald-400" :
+              themeName === 'crimson' ? "text-rose-400" :
+              "text-white"
+            )} />
           </div>
           <p className={cn(
             "font-bold tracking-widest uppercase text-xs animate-pulse",
-            themeName === 'luxury' ? "text-amber-400/80" : "text-indigo-200"
-          )}>Initializing Secure Tunnel...</p>
+            themeName === 'luxury' ? "text-amber-400/80" :
+            themeName === 'midnight' ? "text-cyan-300" :
+            themeName === 'forest' ? "text-emerald-300" :
+            themeName === 'crimson' ? "text-rose-300" :
+            "text-indigo-200"
+          )}>{isAr ? "يتم تحميل الرسائل الآمنة" : "Loading secure messaging..."}</p>
         </div>
       </div>
     );
@@ -4207,24 +4266,33 @@ export default function App() {
           themeName === 'liquidglass' ? 'liquid-glass-panel' : themeName === 'luxury' ? 'luxury-panel' : 'bg-indigo-900/40 backdrop-blur-xl border border-white/10',
           "max-w-md w-full my-auto space-y-6 sm:space-y-8 p-6 sm:p-8 rounded-3xl sm:rounded-[40px] shadow-2xl shrink-0 relative z-10"
         )}>
+          <div className="flex justify-end mb-2">
+            <button 
+              onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full text-xs font-bold transition-all border border-white/10 flex items-center gap-1.5"
+            >
+              <Globe className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{isAr ? 'English' : 'العربية'}</span>
+            </button>
+          </div>
+
           <div className="text-center">
             <div className={cn(
-              "w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-2xl sm:rounded-3xl flex items-center justify-center mb-4 sm:mb-6",
+              "w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-[20px] sm:rounded-[24px] flex items-center justify-center mb-4 sm:mb-6",
               themeName === 'luxury'
                 ? "bg-[#141414]/95 border border-amber-500/30 shadow-[0_0_30px_rgba(212,175,55,0.25)]"
-                : "bg-gradient-to-tr from-pink-500 to-yellow-500 shadow-2xl shadow-pink-500/20"
+                : themeName === 'liquidglass'
+                ? "liquid-glass-input shadow-[0_0_40px_rgba(255,255,255,0.15)]"
+                : "bg-white/5 border border-white/10 shadow-2xl backdrop-blur-2xl"
             )}>
-              <span className={cn("font-black text-3xl sm:text-4xl", themeName === 'luxury' ? "text-amber-400" : "text-white")}>M</span>
+              <Sparkles className={cn("w-8 h-8 sm:w-10 sm:h-10", themeName === 'luxury' ? "text-amber-400" : "text-white")} />
             </div>
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight mb-2 flex items-center justify-center gap-0.5">
-              <span className={themeName === 'luxury' ? "text-amber-400 font-serif" : "text-pink-500"}>M</span>
-              <span className={cn(
-                themeName === 'luxury' 
-                  ? "text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-500 font-serif" 
-                  : "text-transparent bg-clip-text bg-gradient-to-r from-indigo-200 to-cyan-300"
-              )}>emuer</span>
+            <h2 className="text-3xl sm:text-5xl font-black tracking-tight mb-2 flex items-center justify-center gap-0.5 font-display select-none" dir="ltr">
+              <span className={themeName === 'luxury' ? "text-amber-400 font-display" : "text-white"}>Memuer</span>
             </h2>
-            <p className="text-xs sm:text-sm text-indigo-200/70 font-medium">Privacy is not an option. It's the standard.</p>
+            <p className="text-xs sm:text-sm text-indigo-200/70 font-medium tracking-wide">
+              {isAr ? 'تطبيق مراسلة آمن، جميل وبسيط للجميع' : 'Simple, Beautiful & Private Messaging'}
+            </p>
           </div>
           
           {!showLocalLogin ? (
@@ -4234,14 +4302,14 @@ export default function App() {
                 className="w-full py-3.5 sm:py-4 px-6 bg-white text-indigo-950 font-black rounded-xl sm:rounded-2xl flex items-center justify-center gap-3 hover:bg-white/90 transition-all shadow-xl text-sm sm:text-base"
               >
                 <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
-                Enter Secure Vault
+                {isAr ? 'تسجيل الدخول للمحادثات' : 'Sign In to Chat'}
               </button>
               <button 
                 onClick={() => setShowLocalLogin(true)}
                 className="w-full py-3 sm:py-3.5 px-6 bg-white/5 border border-white/10 text-white font-bold rounded-xl sm:rounded-2xl flex items-center justify-center gap-3 hover:bg-white/10 transition-all text-sm sm:text-base"
               >
                 <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-pink-400" />
-                Local Vault Passkey
+                {isAr ? 'تسجيل الدخول بكلمة المرور' : 'Password Login'}
               </button>
             </div>
           ) : (
@@ -4252,33 +4320,33 @@ export default function App() {
             >
               {isResetting ? (
                 <div className="space-y-4">
-                  <h3 className="text-xl font-bold text-white text-center">Reset Access</h3>
+                  <h3 className="text-xl font-bold text-white text-center">{isAr ? 'استعادة الحساب' : 'Reset Access'}</h3>
                   <p className="text-[10px] text-indigo-200/60 text-center uppercase tracking-widest leading-relaxed">
-                    Enter your vault email to receive a recovery link.
+                    {isAr ? 'أدخل بريدك الإلكتروني لاستلام رابط استعادة الحساب.' : 'Enter your email address to receive a recovery link.'}
                   </p>
                   <input 
                     type="email" 
-                    placeholder="Vault Email" 
+                    placeholder={isAr ? 'البريد الإلكتروني' : 'Email Address'} 
                     value={localEmail}
                     onChange={(e) => setLocalEmail(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 ring-pink-500/50 outline-none text-white"
                   />
                   {resetEmailSent && (
                     <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-[10px] font-bold uppercase tracking-widest text-center">
-                      Recovery link dispatched!
+                      {isAr ? 'تم إرسال رابط الاستعادة!' : 'Recovery link dispatched!'}
                     </div>
                   )}
                   <button 
                     onClick={() => resetPassword(localEmail)}
                     className="w-full py-3.5 bg-cyan-500 text-white font-black rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all text-sm uppercase tracking-widest"
                   >
-                    Send Recovery Link
+                    {isAr ? 'إرسال رابط الاستعادة' : 'Send Recovery Link'}
                   </button>
                   <button 
                     onClick={() => setIsResetting(false)}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-indigo-300 hover:text-white"
                   >
-                    Return to login
+                    {isAr ? 'العودة لتسجيل الدخول' : 'Return to login'}
                   </button>
                 </div>
               ) : (
@@ -4287,7 +4355,7 @@ export default function App() {
                     {isRegistering && (
                       <input 
                         type="text" 
-                        placeholder="Identity Label (e.g. Ghost)" 
+                        placeholder={isAr ? 'الاسم الظاهر (مثال: أستاذ علي)' : 'Display Name / Nickname'} 
                         value={localName}
                         onChange={(e) => setLocalName(e.target.value)}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 ring-pink-500/50 outline-none text-white"
@@ -4295,14 +4363,14 @@ export default function App() {
                     )}
                     <input 
                       type="email" 
-                      placeholder="Vault Email" 
+                      placeholder={isAr ? 'البريد الإلكتروني' : 'Email Address'} 
                       value={localEmail}
                       onChange={(e) => setLocalEmail(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 ring-pink-500/50 outline-none text-white"
                     />
                     <input 
                       type="password" 
-                      placeholder="Vault Passphrase" 
+                      placeholder={isAr ? 'كلمة المرور' : 'Password'} 
                       value={localPassword}
                       onChange={(e) => setLocalPassword(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 ring-pink-500/50 outline-none text-white"
@@ -4486,17 +4554,25 @@ export default function App() {
           filter: isSocialOpen ? 'blur(2px)' : 'blur(0px)',
         }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="flex flex-1 h-full w-full overflow-hidden"
+        className="flex flex-1 h-full w-full overflow-hidden sm:p-4 gap-4"
       >
         {/* Leftmost Rail */}
-      <div className={cn("hidden sm:flex w-20 flex-col items-center gap-4 py-6 border-r border-white/5 shrink-0", currentTheme.rail)}>
+      <div className={cn("hidden sm:flex w-[80px] flex-col items-center gap-4 py-6 z-10 shrink-0 rounded-[32px] shadow-2xl transition-all", 
+        currentTheme.rail, 
+        (themeName !== 'luxury' && themeName !== 'liquidglass') ? 'border border-white/5 bg-white/5 backdrop-blur-3xl' : ''
+      )}>
         <div className={cn(
-          "w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer transition-all",
+          "w-12 h-12 rounded-[16px] flex items-center justify-center cursor-pointer transition-all duration-500",
           themeName === 'luxury'
-            ? "bg-[#141414]/90 border border-amber-500/30 shadow-[0_0_15px_rgba(212,175,55,0.15)] hover:border-amber-500/60"
-            : "bg-gradient-to-tr from-pink-500 to-yellow-500 shadow-lg shadow-pink-500/20 hover:scale-105"
+            ? "bg-[#141414]/90 border border-amber-500/30 shadow-[0_0_20px_rgba(212,175,55,0.2)] hover:shadow-[0_0_30px_rgba(212,175,55,0.4)] hover:scale-105 hover:border-amber-500/60"
+            : themeName === 'liquidglass'
+            ? "liquid-glass-input shadow-[0_0_25px_rgba(255,255,255,0.1)] hover:shadow-[0_0_35px_rgba(255,255,255,0.2)] hover:scale-110"
+            : "bg-white/5 border border-white/10 backdrop-blur-xl shadow-xl hover:bg-white/10 hover:scale-110"
         )}>
-          <span className={cn("font-black text-xl", themeName === 'luxury' ? "text-amber-400" : "text-white")}>M</span>
+          <Sparkles className={cn("w-6 h-6", 
+            themeName === 'luxury' ? "text-amber-400" : 
+            themeName === 'liquidglass' ? "text-white" : "text-blue-400"
+          )} />
         </div>
         
         <div className={cn("w-12 h-12 rounded-full flex items-center justify-center cursor-pointer transition-all", currentTheme.accentBg, "hover:opacity-80")} onClick={() => setIsAddConnectionModalOpen(true)}>
@@ -4539,28 +4615,36 @@ export default function App() {
 
       {/* Sidebar: Contacts & Channels */}
       <div className={cn(
-        "flex flex-col",
+        "flex flex-col transition-all duration-300",
         isDesktop 
-          ? "relative w-72 shrink-0 border-r border-white/5 h-full" 
+          ? "relative w-[320px] shrink-0 h-full rounded-[32px] shadow-2xl overflow-hidden" 
           : "fixed inset-y-0 left-0 z-[80] w-[85vw] sm:w-72 transition-transform duration-300",
-        themeName === 'liquidglass' ? 'liquid-glass-panel border-r-0' : themeName === 'luxury' ? 'luxury-panel border-r-0' : 'backdrop-blur-2xl',
-        isDesktop ? currentTheme.sidebar : currentTheme.sidebarMobile,
+        themeName === 'liquidglass' ? 'liquid-glass-panel border-r-0' : themeName === 'luxury' ? 'luxury-panel border-r-0' : 'sleek-sidebar border-r-0',
+        isDesktop ? "" : currentTheme.sidebarMobile,
         isDesktop ? "translate-x-0" : (isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full")
       )}>
-        <div className="px-4 sm:px-6 py-4 flex items-center justify-between gap-2">
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-0.5">
+        <div className="px-3 sm:px-4 py-3.5 flex items-center justify-between gap-2 border-b border-white/5">
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-0.5 font-display select-none" dir="ltr">
             <span className={themeName === 'luxury' ? "text-amber-400 font-serif" : "text-pink-500"}>m</span>
             <span className={cn(
               themeName === 'luxury' 
                 ? "text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-500 font-serif" 
-                : "text-transparent bg-clip-text bg-gradient-to-r from-indigo-200 to-cyan-300"
+                : "text-transparent bg-clip-text bg-gradient-to-r from-indigo-200 via-white to-cyan-300"
             )}>emuer</span>
           </h2>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button 
+              onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+              className="px-2 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[9px] font-bold transition-all border border-white/10 flex items-center gap-1 shrink-0"
+              title={isAr ? 'Switch to English' : 'تغيير للغة العربية'}
+            >
+              <Globe className="w-2.5 h-2.5 text-cyan-400" />
+              <span>{isAr ? 'EN' : 'عربي'}</span>
+            </button>
             {isUserAdminMe && (
               <button 
                 onClick={() => setIsAdminPanelOpen(true)}
-                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/30 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 select-none shadow-[0_0_10px_rgba(239,68,68,0.1)] hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] hover:scale-105 active:scale-95"
+                className="px-2 py-1 bg-red-500/10 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/30 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 shadow-[0_0_10px_rgba(239,68,68,0.1)] hover:scale-105 active:scale-95"
                 title="Admin Console"
               >
                 <Sliders className="w-2.5 h-2.5" />
@@ -4569,46 +4653,46 @@ export default function App() {
             )}
             <button 
               onClick={() => setIsSocialOpen(true)}
-              className="px-2.5 py-1 bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white rounded-lg text-[9px] font-black uppercase tracking-wider hover:scale-105 active:scale-95 transition-all flex items-center gap-1 shadow-[0_0_10px_rgba(239,68,68,0.15)] shrink-0"
+              className="px-2 py-1 bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white rounded-lg text-[9px] font-black uppercase tracking-wider hover:scale-105 active:scale-95 transition-all flex items-center gap-1 shadow-[0_0_10px_rgba(239,68,68,0.15)] shrink-0"
               title="Memuer Social+"
             >
               <Sparkles className="w-2.5 h-2.5 text-white animate-pulse" />
               Social+
             </button>
-            <button onClick={toggleMobileSidebar} className="lg:hidden p-2 hover:bg-white/10 rounded-xl">
+            <button onClick={toggleMobileSidebar} className="lg:hidden p-1.5 hover:bg-white/10 rounded-xl">
               <X className="w-5 h-5 text-white/50" />
             </button>
           </div>
         </div>
 
         {/* Tab Switcher */}
-        <div className="px-6 mb-4 flex gap-1 bg-white/5 mx-6 rounded-xl p-1 border border-white/5">
+        <div className="px-2 my-3 flex gap-1 bg-black/40 backdrop-blur-2xl mx-3 rounded-2xl p-1 border border-white/10 shadow-inner">
           <button 
             onClick={() => setSidebarTab('chats')}
             className={cn(
-              "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-              sidebarTab === 'chats' ? cn(currentTheme.tabChats, "text-white shadow-lg") : cn(currentTheme.accentText, "hover:bg-white/5")
+              "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+              sidebarTab === 'chats' ? cn(currentTheme.tabChats, "text-white shadow-lg scale-[1.02]") : cn(currentTheme.accentText, "hover:bg-white/5")
             )}
           >
-            Chats
+            {isAr ? 'المحادثات' : 'Messages'}
           </button>
           <button 
             onClick={() => setSidebarTab('contacts')}
             className={cn(
-              "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-              sidebarTab === 'contacts' ? cn(currentTheme.tabDirectory, "text-white shadow-lg") : "text-cyan-300 hover:bg-white/5"
+              "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+              sidebarTab === 'contacts' ? cn(currentTheme.tabDirectory, "text-white shadow-lg scale-[1.02]") : "text-cyan-300 hover:bg-white/5"
             )}
           >
-            Directory
+            {isAr ? 'جهات الاتصال' : 'Contacts'}
           </button>
           <button 
             onClick={() => setSidebarTab('requests')}
             className={cn(
-              "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all relative",
-              sidebarTab === 'requests' ? cn(currentTheme.tabSignals, "text-white shadow-lg") : "text-pink-300 hover:bg-white/5"
+              "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative",
+              sidebarTab === 'requests' ? cn(currentTheme.tabSignals, "text-white shadow-lg scale-[1.02]") : "text-pink-300 hover:bg-white/5"
             )}
           >
-            Signals
+            {isAr ? 'الطلبات' : 'Requests'}
             {friendRequests.length > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 text-black text-[8px] flex items-center justify-center rounded-full font-black animate-bounce">
                 {friendRequests.length}
@@ -4653,11 +4737,11 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-1 flex items-center gap-2">
-            <Search className="w-4 h-4 text-white/30 ml-2" />
+          <div className="bg-black/30 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 flex items-center gap-2 focus-within:border-cyan-400/40 focus-within:ring-1 focus-within:ring-cyan-400/20 transition-all shadow-inner">
+            <Search className="w-4 h-4 text-white/40 ml-2 shrink-0" />
             <input 
               type="text" 
-              placeholder={sidebarTab === 'chats' ? "Search chats..." : "Search directory..."} 
+              placeholder={sidebarTab === 'chats' ? (isAr ? "البحث في المحادثات..." : "Search messages...") : (isAr ? "البحث في جهات الاتصال..." : "Search contacts...")} 
               value={searchQuery}
               onChange={(e) => {
                 const val = e.target.value;
@@ -4670,7 +4754,7 @@ export default function App() {
                   setShowEgyptGameBtn(false);
                 }
               }}
-              className="bg-transparent border-none focus:ring-0 text-xs py-1.5 w-full"
+              className="bg-transparent border-none focus:ring-0 text-xs py-1 w-full text-white placeholder-white/40 font-medium"
             />
           </div>
 
@@ -4704,31 +4788,33 @@ export default function App() {
           {sidebarTab === 'chats' ? (
             <>
               <div className="px-3 py-2">
-                <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-2", currentTheme.accentText)}>Systems</p>
+                <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-2", currentTheme.accentText)}>
+                  {isAr ? 'المساعد الذكي' : 'AI Assistant'}
+                </p>
                 <div 
                   onClick={startAIChat}
                   className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/10 ring-1 ring-cyan-400/30 cursor-pointer hover:bg-white/5 transition-all group", currentTheme.accentBg)}
                 >
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                    <span className="text-[10px] font-bold">AI</span>
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform shrink-0">
+                    <span className="text-[10px] font-bold text-white">AI</span>
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <p className="font-bold text-sm text-cyan-200">Private AI Vault</p>
-                    <p className="text-[10px] text-indigo-200/70 truncate italic font-medium">Neural Assistant Active</p>
+                    <p className="font-bold text-sm text-cyan-200">{isAr ? 'المساعد الذكي' : 'AI Assistant'}</p>
+                    <p className="text-[10px] text-indigo-200/70 truncate italic font-medium">{isAr ? 'جاهز للمساعدة دائماً' : 'Ready to help anytime'}</p>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-cyan-400 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
+                  <ArrowRight className={cn("w-4 h-4 text-cyan-400 opacity-0 group-hover:opacity-100 transition-all", isAr ? "translate-x-2 group-hover:translate-x-0" : "-translate-x-2 group-hover:translate-x-0")} />
                 </div>
               </div>
-
-
 
               <div className="px-3 space-y-6">
                 {/* Direct Messages Section */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", currentTheme.accentText)}>Secure Streams</p>
+                    <p className={cn("text-[10px] font-bold uppercase tracking-widest", currentTheme.accentText)}>
+                      {isAr ? 'المحادثات الخاصة' : 'Private Messages'}
+                    </p>
                     <span className="text-[9px] text-cyan-400/50 font-mono">
-                      {chats.filter(c => c.type === 'direct' && !c.id.startsWith('ai_') && !c.participants.includes('memuer-ai') && !(c.archivedBy && c.archivedBy.includes(user?.uid || ''))).length} ACTIVE
+                      {chats.filter(c => c.type === 'direct' && !c.id.startsWith('ai_') && !c.participants.includes('memuer-ai') && !(c.archivedBy && c.archivedBy.includes(user?.uid || ''))).length} {isAr ? 'نشط' : 'ACTIVE'}
                     </span>
                   </div>
                   <div className="space-y-1">
@@ -5207,7 +5293,11 @@ export default function App() {
       </div>
 
       {/* Main Content Area: Chat Window */}
-      <div className={cn("flex-1 flex flex-col relative min-w-0 overflow-hidden", themeName === 'liquidglass' ? "bg-transparent" : currentTheme.bg)}>
+      <div className={cn(
+        "flex-1 flex flex-col relative min-w-0 overflow-hidden transition-all duration-300", 
+        isDesktop ? "rounded-[32px] shadow-2xl" : "",
+        themeName === 'liquidglass' ? 'liquid-glass-panel' : themeName === 'luxury' ? 'luxury-panel' : 'backdrop-blur-3xl border border-white/5 bg-white/5'
+      )}>
         {/* BIG ANNOUNCEMENT BANNER */}
         {(() => {
           const isAnnouncementActive = systemConfig?.systemAnnouncement === undefined
@@ -5264,7 +5354,7 @@ export default function App() {
         })()}
 
         {!activeChat && (
-          <div className="lg:hidden h-14 border-b border-white/5 flex items-center px-4 bg-black/10 backdrop-blur-md relative z-20 shrink-0 gap-2">
+          <div className="sm:hidden m-4 mb-0 rounded-2xl flex items-center px-4 py-3 relative z-20 shrink-0 gap-2 shadow-2xl reflective-header">
             <button 
               onClick={toggleMobileSidebar} 
               className="p-2 hover:bg-white/10 rounded-xl text-indigo-200"
@@ -5279,13 +5369,9 @@ export default function App() {
               <Sparkles className="w-2.5 h-2.5 text-white animate-pulse" />
               Social+
             </button>
-            <span className="ml-2 font-black tracking-tight flex items-center gap-0.5">
-              <span className={themeName === 'luxury' ? "text-amber-400 font-serif" : "text-pink-500"}>M</span>
-              <span className={cn(
-                themeName === 'luxury' 
-                  ? "text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-500 font-serif" 
-                  : "text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-300"
-              )}>emuer</span>
+            <span className="ml-2 font-black tracking-tight flex items-center gap-1 font-display">
+              <Sparkles className={cn("w-4 h-4", themeName === 'luxury' ? "text-amber-400" : "text-white")} />
+              <span className={themeName === 'luxury' ? "text-amber-400 font-display" : "text-white"}>Memuer</span>
             </span>
           </div>
         )}
@@ -5311,7 +5397,7 @@ export default function App() {
           <div className="flex-1 flex flex-row min-w-0 overflow-hidden relative h-full">
             <div className={cn("flex-1 flex flex-col min-w-0 overflow-hidden h-full relative", themeName === 'liquidglass' ? "liquid-glass-panel" : themeName === 'luxury' ? "luxury-panel" : "")}>
             {/* Header */}
-            <div className="h-16 sm:h-20 border-b border-white/5 flex items-center justify-between px-4 sm:px-8 bg-black/10 backdrop-blur-md relative z-10 shrink-0">
+            <div className="h-16 sm:h-20 flex items-center justify-between px-4 sm:px-8 relative z-10 shrink-0 shadow-2xl reflective-header">
               <div className="flex items-center gap-2 sm:gap-4">
                 <button 
                   onClick={() => setActiveChat(null)} 
@@ -5339,7 +5425,7 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <h1 className={cn("text-sm sm:text-lg truncate", themeName === 'liquidglass' ? "font-light tracking-wide font-sans text-white" : "font-black tracking-tight")}>
                       {activeChat.id.startsWith('ai_') 
-                        ? (activeChat.name || 'Personal Neural Vault')
+                        ? (activeChat.name === 'Personal Neural Vault' ? (isAr ? 'المساعد الذكي' : 'AI Assistant') : (activeChat.name || (isAr ? 'المساعد الذكي' : 'AI Assistant')))
                         : activeChat.type === 'direct' 
                           ? contacts.find(c => c.uid === activeChat.participants.find(id => id !== user?.uid))?.displayName 
                           : activeChat.name}
@@ -5351,24 +5437,24 @@ export default function App() {
                       })()
                     )}
                     {activeChat.id.startsWith('ai_') ? (
-                      <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-cyan-500/20 text-[9px] font-black text-cyan-400 border border-cyan-500/30 uppercase tracking-tighter italic">Neural Link</span>
+                      <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-cyan-500/20 text-[9px] font-black text-cyan-400 border border-cyan-500/30 uppercase tracking-tighter italic">{isAr ? 'مساعد ذكي' : 'AI Chat'}</span>
                     ) : user?.vaultSynced === false ? (
-                      <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-red-500/20 text-[9px] font-black text-red-400 border border-red-500/30 uppercase tracking-tighter italic">Keys Out of Sync</span>
+                      <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-red-500/20 text-[9px] font-black text-red-400 border border-red-500/30 uppercase tracking-tighter italic">{isAr ? 'خطأ بالربط' : 'Keys Out of Sync'}</span>
                     ) : (
-                      <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-green-500/20 text-[9px] font-black text-green-400 border border-green-500/30 uppercase tracking-tighter italic">Encrypted</span>
+                      <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-green-500/20 text-[9px] font-black text-green-400 border border-green-500/30 uppercase tracking-tighter italic">{isAr ? 'مشفرة بأمان' : 'Encrypted'}</span>
                     )}
                   </div>
                   <p className={cn("text-[9px] sm:text-[10px] tracking-widest flex items-center gap-2 truncate", themeName === 'liquidglass' ? "font-normal text-cyan-200 uppercase" : "font-bold uppercase", currentTheme.accentText)}>
                     {themeName === 'liquidglass' ? (
                       <span className="flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span className="font-sans text-[10px] tracking-wide text-cyan-200/90 lowercase first-letter:uppercase">online</span>
+                        <span className="font-sans text-[10px] tracking-wide text-cyan-200/90 lowercase first-letter:uppercase">{isAr ? 'متصل الآن' : 'online'}</span>
                       </span>
                     ) : (
                       <>
                         <Shield className={cn("w-2.5 h-2.5", user?.vaultSynced === false ? "text-red-500" : activeChat.id.startsWith('ai_') ? "text-cyan-400" : "currentColor")} /> 
                         <span className={cn("truncate", user?.vaultSynced === false && "text-red-400", activeChat.id.startsWith('ai_') && "text-cyan-300")}>
-                          {activeChat.id.startsWith('ai_') ? "Direct Neural Uplink" : user?.vaultSynced === false ? "Vault Protection Failure" : "Secure Session Active"}
+                          {activeChat.id.startsWith('ai_') ? (isAr ? "دردشة المساعد الذكي" : "AI Assistant Chat") : user?.vaultSynced === false ? (isAr ? "خطأ بالحماية" : "Vault Protection Failure") : (isAr ? "محادثة آمنة ومشفرة" : "Private & Encrypted Chat")}
                         </span>
                       </>
                     )}
@@ -5923,8 +6009,8 @@ export default function App() {
                     )}
 
                     <div className={cn(
-                      themeName === 'liquidglass' ? 'liquid-glass-input' : 'bg-white/10 backdrop-blur-2xl border border-white/20',
-                      "rounded-xl sm:rounded-[24px] p-2 flex items-center gap-2 shadow-2xl focus-within:ring-2 transition-all min-h-[52px]",
+                      themeName === 'liquidglass' ? 'liquid-glass-input rounded-full' : 'bg-black/40 backdrop-blur-3xl border border-white/10 rounded-full',
+                      "p-1.5 sm:p-2.5 pl-4 sm:pl-6 flex items-center gap-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] focus-within:ring-2 transition-all min-h-[52px]",
                       themeName === 'liquidglass' ? 'ring-teal-500/30' : 'ring-pink-500/30'
                     )}>
                       {audioRecordingState === 'recording' ? (
@@ -6038,7 +6124,7 @@ export default function App() {
                                 setMessageInput((parts.join(' ') + ' @memuer ').trimStart());
                               }
                             }}
-                            placeholder={uploading ? "Uploading media securely to Cloud Storage..." : activeChat?.id.startsWith('ai_') ? "Input neural query..." : "Type message..."} 
+                            placeholder={uploading ? (isAr ? "جاري رفع الملف..." : "Uploading file...") : activeChat?.id.startsWith('ai_') ? (isAr ? "اكتب سؤالك للمساعد الذكي..." : "Ask the AI assistant...") : (isAr ? "اكتب رسالة..." : "Type a message...")} 
                             className={cn(
                               "flex-1 bg-transparent border-none focus:ring-0 text-xs sm:text-sm py-1 sm:py-2 outline-none text-white",
                               themeName === 'liquidglass' ? 'placeholder-white/50 font-normal' : 'placeholder-indigo-300/40 font-semibold'
@@ -6454,68 +6540,61 @@ export default function App() {
           <div className="flex-1 flex flex-col items-center justify-start lg:justify-center p-8 text-center space-y-12 relative overflow-y-auto custom-scrollbar pt-12 lg:pt-0">
             <div className="relative mt-8 lg:mt-0">
               <div className={cn(
-                "w-24 h-24 sm:w-32 sm:h-32 rounded-[32px] sm:rounded-[40px] flex items-center justify-center animate-bounce border",
+                "w-32 h-32 sm:w-48 sm:h-48 rounded-[40px] sm:rounded-[56px] flex items-center justify-center animate-bounce-slow border",
                 themeName === 'luxury'
-                  ? "bg-[#141414]/95 border-amber-500/30 shadow-[0_0_35px_rgba(212,175,55,0.3)]"
-                  : "bg-gradient-to-tr from-pink-500 to-yellow-500 shadow-2xl shadow-pink-500/20 border-white/10"
+                  ? "bg-[#141414]/95 border-amber-500/30 shadow-[0_0_50px_rgba(212,175,55,0.4)]"
+                  : themeName === 'liquidglass'
+                  ? "liquid-glass-input shadow-[0_0_60px_rgba(255,255,255,0.2)]"
+                  : "bg-white/5 shadow-2xl backdrop-blur-2xl border-white/10"
               )}>
-                <span className={cn(
-                  "font-black text-5xl sm:text-6xl",
-                  themeName === 'luxury' ? "text-amber-400 font-serif" : "text-white"
-                )}>{displayLetter}</span>
+                <Sparkles className={cn("w-12 h-12 sm:w-20 sm:h-20", themeName === 'luxury' ? "text-amber-400" : "text-white")} />
               </div>
-              {themeName === 'luxury' ? (
-                <div className="absolute -top-4 -right-4 w-12 h-12 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shadow-xl animate-pulse backdrop-blur-md">
-                  <span className="text-[10px] font-black text-amber-400 font-serif">LXR</span>
-                </div>
-              ) : (
-                <div className="absolute -top-4 -right-4 w-12 h-12 rounded-full bg-cyan-400 flex items-center justify-center shadow-xl border-4 border-indigo-900 animate-pulse">
-                  <span className="text-[10px] font-black text-indigo-900">NEW</span>
-                </div>
-              )}
             </div>
             
-            <div className="max-w-md space-y-4">
-              <h1 className="text-4xl font-black tracking-tight">Welcome home, {user?.displayName?.split(' ')[0]}</h1>
-              <p className="text-indigo-200/60 font-medium leading-relaxed">
-                Your private vault is ready. All communications are automatically encrypted with your key: 
-                <code className="block mt-2 font-mono text-[10px] bg-white/5 py-1 px-2 rounded-lg text-indigo-100">{user?.publicKey?.slice(0, 32)}...</code>
+            <div className="max-w-xl space-y-4">
+              <h1 className="text-4xl sm:text-6xl font-black tracking-tight font-display select-none" dir="ltr">Memuer</h1>
+              <p className="text-2xl sm:text-3xl text-white font-bold font-display tracking-tight">
+                {isAr ? `أهلاً بك في بيتك، ${user?.displayName?.split(' ')[0] || user?.displayName || 'صديقي'}` : `Welcome Home, ${user?.displayName?.split(' ')[0] || user?.displayName || 'Friend'}`}
+              </p>
+              <p className="text-sm text-indigo-200/80 font-medium leading-relaxed max-w-sm mx-auto">
+                {isAr ? 'مساحتك الخاصة آمنة وجاهزة للمحادثات المشفرة.' : 'Your private chat space is secure and end-to-end encrypted.'}
+                <span className="block mt-3 text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{isAr ? 'معرّف الأمان الخاص بك:' : 'Your Security ID:'}</span>
+                <code className="block mt-1 font-mono text-[10px] bg-white/5 py-2 px-3 rounded-xl text-white/60 border border-white/5 truncate max-w-xs mx-auto select-all">{user?.publicKey?.slice(0, 48) || user?.uid}...</code>
               </p>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-sm px-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md px-4">
               <div 
                 onClick={() => { setSidebarTab('contacts'); setIsMobileSidebarOpen(true); }} 
-                className="p-6 bg-white/10 rounded-[32px] border border-white/20 hover:bg-white/20 transition-all cursor-pointer group flex flex-col items-center justify-center gap-3 backdrop-blur-xl shadow-2xl"
+                className={cn(
+                  "p-6 rounded-[32px] border border-white/10 hover:border-white/20 transition-all cursor-pointer group flex flex-col items-center justify-center gap-3 backdrop-blur-xl shadow-2xl",
+                  themeName === 'liquidglass' ? 'liquid-glass-input' : 'bg-white/5 hover:bg-white/10'
+                )}
               >
-                <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
                   <Users className="w-6 h-6" />
                 </div>
-                <p className="text-xs font-black uppercase tracking-widest text-white">Find Contacts</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-white/70 group-hover:text-white transition-colors">{isAr ? 'جهات الاتصال' : 'Contacts'}</p>
               </div>
               
               <div 
                 onClick={() => setIsAddConnectionModalOpen(true)} 
-                className="p-6 bg-white/10 rounded-[32px] border border-white/20 hover:bg-white/20 transition-all cursor-pointer group flex flex-col items-center justify-center gap-3 backdrop-blur-xl shadow-2xl"
+                className={cn(
+                  "p-6 rounded-[32px] border border-white/10 hover:border-white/20 transition-all cursor-pointer group flex flex-col items-center justify-center gap-3 backdrop-blur-xl shadow-2xl",
+                  themeName === 'liquidglass' ? 'liquid-glass-input' : 'bg-white/5 hover:bg-white/10'
+                )}
               >
-                <div className="w-12 h-12 rounded-2xl bg-pink-500/20 flex items-center justify-center text-pink-400 group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 rounded-2xl bg-pink-500/10 flex items-center justify-center text-pink-400 group-hover:scale-110 transition-transform">
                   <Plus className="w-6 h-6" />
                 </div>
-                <p className="text-xs font-black uppercase tracking-widest text-white">Connect by ID</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-white/70 group-hover:text-white transition-colors">{isAr ? 'إضافة جهة اتصال' : 'Add Contact'}</p>
               </div>
             </div>
           </div>
         )}
       </div>
-
       </motion.div>
 
-        {/* Egypt Football Game Easter Egg */}
-        <AnimatePresence>
-          {isEgyptGameOpen && (
-            <EgyptFootballGame onClose={() => setIsEgyptGameOpen(false)} />
-          )}
-        </AnimatePresence>
 
         {/* Memuer Social+ Platform */}
         <AnimatePresence>
@@ -6548,7 +6627,7 @@ export default function App() {
                 )}
               >
                 <div className="flex justify-between items-center">
-                  <h3 className="text-2xl font-black tracking-tight font-bold">Your Identity</h3>
+                  <h3 className="text-2xl font-black tracking-tight font-bold">{isAr ? 'الملف الشخصي' : 'Your Identity'}</h3>
                   <button onClick={() => setIsProfileModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full"><X className="w-5 h-5" /></button>
                 </div>
                 
@@ -6576,13 +6655,13 @@ export default function App() {
                   <div className="text-center space-y-1.5">
                     <p className="text-lg sm:text-xl font-bold">{user?.displayName}</p>
                     {user && <div className="flex justify-center"><UserRoleBadge role={user.role} email={user.email} /></div>}
-                    <p className="text-[9px] sm:text-[10px] text-indigo-300 uppercase tracking-widest font-black">Quantum-Secure Channel</p>
+                    <p className="text-[9px] sm:text-[10px] text-indigo-300 uppercase tracking-widest font-black">{isAr ? 'قناة مشفرة وآمنة' : 'Quantum-Secure Channel'}</p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300 ml-1">Status Message</label>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300 ml-1">{isAr ? 'حالة الحساب / الرسالة' : 'Status Message'}</label>
                     <input 
                       type="text" 
                       defaultValue={user?.status}
@@ -6591,7 +6670,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300 ml-1">Ambience Palette</label>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300 ml-1">{isAr ? 'مظهر التطبيق' : 'Ambience Palette'}</label>
                     <div className="flex gap-3 mt-2">
                       {[
                         { name: 'Vibrant', class: 'bg-indigo-600' },
@@ -6773,13 +6852,13 @@ export default function App() {
                     onClick={() => { setIsContactModalOpen(true); setIsProfileModalOpen(false); }} 
                     className="flex-1 py-3.5 rounded-2xl bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/25 hover:bg-indigo-500/30 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
                   >
-                    <Mail className="w-4 h-4" /> Contact Support
+                    <Mail className="w-4 h-4" /> {isAr ? 'الدعم الفني' : 'Contact Support'}
                   </button>
                   <button 
                     onClick={handleLogout} 
                     className="flex-1 py-3.5 rounded-2xl bg-red-500/20 text-red-400 font-bold border border-red-500/20 hover:bg-red-500/30 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
                   >
-                    <LogOut className="w-4 h-4" /> Terminate Session
+                    <LogOut className="w-4 h-4" /> {isAr ? 'تسجيل الخروج' : 'Terminate Session'}
                   </button>
                 </div>
               </motion.div>
@@ -6806,7 +6885,7 @@ export default function App() {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2.5">
                     <Mail className="w-5 h-5 text-pink-400" />
-                    <h3 className="text-xl sm:text-2xl font-black tracking-tight font-bold text-white">Contact Us</h3>
+                    <h3 className="text-xl sm:text-2xl font-black tracking-tight font-bold text-white">{isAr ? 'اتصل بنا / الدعم الفني' : 'Contact Us'}</h3>
                   </div>
                   <button 
                     onClick={() => setIsContactModalOpen(false)} 
@@ -6827,7 +6906,7 @@ export default function App() {
                         : "text-zinc-400 hover:text-white"
                     )}
                   >
-                    Submit Ticket
+                    {isAr ? 'إرسال تذكرة' : 'Submit Ticket'}
                   </button>
                   <button
                     onClick={() => setContactActiveTab('inbox')}
@@ -6838,7 +6917,7 @@ export default function App() {
                         : "text-zinc-400 hover:text-white"
                     )}
                   >
-                    Your Inbox
+                    {isAr ? 'صندوق الوارد' : 'Your Inbox'}
                     {userContactMessages.length > 0 && (
                       <span className="bg-pink-500 text-white font-black rounded-full text-[8.5px] h-4 min-w-4 px-1 flex items-center justify-center animate-pulse">
                         {userContactMessages.length}
@@ -6856,10 +6935,10 @@ export default function App() {
                     </div>
                     <div className="space-y-1.5 text-center">
                       <p className="text-sm font-black uppercase tracking-wider text-white animate-pulse">
-                        {contactProgressStep || 'Accessing support gateway...'}
+                        {contactProgressStep || (isAr ? 'جاري الاتصال بالدعم...' : 'Accessing support gateway...')}
                       </p>
                       <p className="text-[10px] text-zinc-500 font-mono tracking-widest">
-                        SECURE IN-APP ROUTING ACTIVE
+                        SECURE ROUTING ACTIVE
                       </p>
                     </div>
                   </div>
@@ -6869,9 +6948,9 @@ export default function App() {
                       <Check className="w-8 h-8 animate-bounce" />
                     </div>
                     <div className="space-y-2">
-                      <h4 className="text-lg font-bold text-white uppercase tracking-wider">Inquiry Sent Directly!</h4>
+                      <h4 className="text-lg font-bold text-white uppercase tracking-wider">{isAr ? 'تم إرسال الرسالة بنجاح!' : 'Inquiry Sent Directly!'}</h4>
                       <p className="text-xs text-indigo-200 px-4 max-w-xs mx-auto leading-relaxed">
-                        Your message has been securely submitted from the app directly to <strong className="text-pink-400">{systemConfig?.contactSupportEmail || 'contactus@memuer.app'}</strong>. Our administration will review it in their control deck.
+                        {isAr ? 'تم إرسال رسالتك بنجاح إلى فريق الدعم الفني. وسيقوم المشرفون بمراجعتها والرد عليك.' : `Your message has been securely submitted from the app directly to ${systemConfig?.contactSupportEmail || 'contactus@memuer.app'}.`}
                       </p>
                     </div>
                     <div className="flex gap-2 w-full pt-4">
@@ -6880,14 +6959,14 @@ export default function App() {
                         onClick={() => { setContactSendSuccess(false); setContactProgressStep(null); }}
                         className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold uppercase tracking-wider text-xs rounded-2xl transition-all"
                       >
-                        Send Another
+                        {isAr ? 'إرسال رسالة أخرى' : 'Send Another'}
                       </button>
                       <button 
                         type="button"
                         onClick={() => { setIsContactModalOpen(false); setContactSendSuccess(false); setContactProgressStep(null); }}
                         className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-indigo-500 hover:opacity-90 text-white font-bold uppercase tracking-wider text-xs rounded-2xl transition-all"
                       >
-                        Dismiss
+                        {isAr ? 'إغلاق' : 'Dismiss'}
                       </button>
                     </div>
                   </div>
@@ -6896,8 +6975,8 @@ export default function App() {
                     {userContactMessages.length === 0 ? (
                       <div className="h-32 flex flex-col items-center justify-center text-center p-4 space-y-2">
                         <Mail className="w-6 h-6 text-zinc-550 animate-pulse" />
-                        <h4 className="text-xs font-bold text-zinc-400">No support history</h4>
-                        <p className="text-[10px] text-zinc-500 leading-relaxed max-w-xs">Any inquiries you submit will appear here with dynamic admin responses in real-time.</p>
+                        <h4 className="text-xs font-bold text-zinc-400">{isAr ? 'لا توجد رسائل سابقة' : 'No support history'}</h4>
+                        <p className="text-[10px] text-zinc-500 leading-relaxed max-w-xs">{isAr ? 'أي تذكرة تقوم بإرسالها ستظهر هنا مع ردود الدعم الفني مباشرة.' : 'Any inquiries you submit will appear here with dynamic admin responses in real-time.'}</p>
                       </div>
                     ) : (
                       userContactMessages.map((msg) => {
@@ -6915,7 +6994,7 @@ export default function App() {
                                   ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-bold" 
                                   : "bg-zinc-800 border-white/5 text-zinc-500"
                               )}>
-                                {msg.replied ? "Answered" : "Pending"}
+                                {msg.replied ? (isAr ? 'تم الرد' : 'Answered') : (isAr ? 'قيد الانتظار' : 'Pending')}
                               </span>
                             </div>
 
@@ -6925,7 +7004,7 @@ export default function App() {
                             {msg.replied && msg.replyMessage && (
                               <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-3 space-y-1 mt-2 text-left">
                                 <div className="text-[8px] font-mono text-emerald-400 font-bold uppercase">
-                                  ADMIN ANSWER ({msg.repliedBy || 'Support'}):
+                                  {isAr ? 'رد الدعم الفني:' : 'ADMIN ANSWER:'} ({msg.repliedBy || 'Support'})
                                 </div>
                                 <p className="text-[11px] text-zinc-200 leading-relaxed font-sans whitespace-pre-wrap">{msg.replyMessage}</p>
                               </div>
@@ -6938,18 +7017,18 @@ export default function App() {
                 ) : (
                   <>
                     <p className="text-xs text-indigo-200">
-                      Have feedback, questions, or ideas? Securely encrypt your inquiry details. Submitting this form transmits your message directly to our servers at <strong className="text-pink-400">{systemConfig?.contactSupportEmail || 'contactus@memuer.app'}</strong>.
+                      {isAr ? 'هل لديك أي استفسار أو اقتراح؟ يمكنك كتابة رسالتك وسنقوم بالرد عليك مباشرة.' : 'Have feedback, questions, or ideas? Submitting this form transmits your message directly to our support team.'}
                     </p>
 
                     <form onSubmit={handleSendContact} className="space-y-4">
                       <div>
                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300 ml-1">
-                          Your Email (For Replies)
+                          {isAr ? 'البريد الإلكتروني للرد' : 'Your Email (For Replies)'}
                         </label>
                         <input 
                           type="email" 
                           required
-                          placeholder="e.g. name@example.com"
+                          placeholder={isAr ? "مثال: name@example.com" : "e.g. name@example.com"}
                           value={contactEmail || user?.email || ''}
                           onChange={(e) => setContactEmail(e.target.value)}
                           className="w-full mt-2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm focus:ring-2 ring-pink-500/30 text-white placeholder-zinc-500 focus:outline-none placeholder:text-zinc-500 bg-black/10"
@@ -6958,12 +7037,12 @@ export default function App() {
 
                       <div>
                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300 ml-1">
-                          Subject Matter
+                          {isAr ? 'عنوان الموضوع' : 'Subject Matter'}
                         </label>
                         <input 
                           type="text" 
                           required
-                          placeholder="e.g. Feedback, Security, Feature Suggestion"
+                          placeholder={isAr ? "مثال: اقتراح، مشكلة تقنية، استفسار" : "e.g. Feedback, Security, Feature Suggestion"}
                           value={contactSubject}
                           onChange={(e) => setContactSubject(e.target.value)}
                           className="w-full mt-2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm focus:ring-2 ring-pink-500/30 text-white placeholder-zinc-500 focus:outline-none placeholder:text-zinc-500 bg-black/10"
@@ -6972,12 +7051,12 @@ export default function App() {
 
                       <div>
                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300 ml-1">
-                          Detailed Message
+                          {isAr ? 'تفاصيل الرسالة' : 'Detailed Message'}
                         </label>
                         <textarea 
                           required
                           rows={4}
-                          placeholder="Type your message here..."
+                          placeholder={isAr ? "اكتب رسالتك هنا..." : "Type your message here..."}
                           value={contactMessage}
                           onChange={(e) => setContactMessage(e.target.value)}
                           className="w-full mt-2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm focus:ring-2 ring-pink-500/30 text-white placeholder-zinc-550 focus:outline-none resize-none placeholder:text-zinc-500 bg-black/10"
@@ -6990,14 +7069,14 @@ export default function App() {
                           onClick={() => setIsContactModalOpen(false)}
                           className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold uppercase tracking-wider text-xs rounded-2xl transition-all"
                         >
-                          Cancel
+                          {isAr ? 'إلغاء' : 'Cancel'}
                         </button>
                         <button 
                           type="submit"
                           className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-indigo-500/90 hover:opacity-90 text-white font-bold uppercase tracking-wider text-xs rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20"
                         >
                           <Send className="w-3.5 h-3.5" />
-                          Transmit Inquiry
+                          {isAr ? 'إرسال الاستفسار' : 'Transmit Inquiry'}
                         </button>
                       </div>
                     </form>
@@ -7027,8 +7106,8 @@ export default function App() {
                 
                 <div className="flex justify-between items-center mb-8">
                   <div>
-                    <h3 className="text-3xl font-black tracking-tighter text-white">SYSTEM UPDATES</h3>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 mt-1">Transmission received • v4.0 Beta</p>
+                    <h3 className="text-3xl font-black tracking-tighter text-white">{isAr ? 'سجل التحديثات' : 'SYSTEM UPDATES'}</h3>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 mt-1">{isAr ? 'تحديثات النظام الحالية • v4.0' : 'Transmission received • v4.0 Beta'}</p>
                   </div>
                   <button 
                     onClick={() => setIsChangelogOpen(false)} 
@@ -7070,7 +7149,7 @@ export default function App() {
                     onClick={() => setIsChangelogOpen(false)}
                     className="w-full py-4 rounded-3xl bg-gradient-to-br from-cyan-400 to-indigo-500 text-indigo-950 font-black uppercase tracking-[0.2em] shadow-xl shadow-cyan-500/20 hover:scale-[1.02] active:scale-95 transition-all"
                   >
-                    Acknowledged
+                    {isAr ? 'فهمت ذلك' : 'Acknowledged'}
                   </button>
                 </div>
               </motion.div>
@@ -7157,19 +7236,19 @@ export default function App() {
                 className="bg-indigo-900 border border-white/10 rounded-3xl sm:rounded-[40px] p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-6 my-auto shrink-0"
               >
                 <div className="flex justify-between items-center">
-                  <h3 className="text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-pink-300 font-bold">New Connection</h3>
+                  <h3 className="text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-pink-300 font-bold">{isAr ? 'إضافة جهة اتصال' : 'Add New Contact'}</h3>
                   <button onClick={() => setIsAddConnectionModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full"><X className="w-5 h-5" /></button>
                 </div>
  
                 <div className="space-y-4">
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300 mb-3 ml-1">Search by ID or Name</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300 mb-3 ml-1">{isAr ? 'البحث بالاسم أو المعرّف' : 'Search by Name or ID'}</p>
                     <div className="flex items-center gap-3">
                       <input 
                         autoFocus
                         type="text" 
                         id="modal-search-input"
-                        placeholder="e.g. demo-1234 or Alice" 
+                        placeholder={isAr ? "أدخل اسم المستخدم أو المعرّف..." : "e.g. demo-1234 or Alice"} 
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             findByUid(e.currentTarget.value);

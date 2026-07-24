@@ -14,24 +14,33 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const language: Language = 'en';
+  const [language, setLanguageState] = useState<Language>(() => {
+    const saved = localStorage.getItem('memuer_language') as Language;
+    return (saved === 'ar' || saved === 'en') ? saved : 'en';
+  });
+
   const setLanguage = (lang: Language) => {
-    // English only
+    setLanguageState(lang);
+    localStorage.setItem('memuer_language', lang);
   };
+
+  const isRTL = language === 'ar';
+  const dir = isRTL ? 'rtl' : 'ltr';
 
   const t = (key: TranslationKey): string => {
-    return translations.en[key] || key;
+    return translations[language]?.[key] || translations['en']?.[key] || key;
   };
-
-  const isRTL = false;
-  const dir = 'ltr';
 
   // Update HTML document direction when language changes
   useEffect(() => {
-    document.documentElement.setAttribute('dir', 'ltr');
-    document.documentElement.setAttribute('lang', 'en');
-    document.body.classList.remove('rtl');
-  }, []);
+    document.documentElement.setAttribute('dir', dir);
+    document.documentElement.setAttribute('lang', language);
+    if (isRTL) {
+      document.body.classList.add('rtl');
+    } else {
+      document.body.classList.remove('rtl');
+    }
+  }, [language, dir, isRTL]);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t, isRTL, dir }}>
